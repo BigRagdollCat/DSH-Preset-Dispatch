@@ -1,0 +1,373 @@
+{
+  "revision": 28,
+  "config": {
+    "allowedPresets": [
+      "planner",
+      "researcher",
+      "investigator",
+      "reviewer",
+      "implementer",
+      "test-author",
+      "verifier"
+    ],
+    "allowModelSelection": true,
+    "maxDepth": 1,
+    "presetPolicies": [
+      {
+        "preset": "standard",
+        "enabled": false,
+        "defaultModel": null,
+        "allowedModels": [],
+        "lockModel": false,
+        "defaultEffort": null,
+        "allowedEfforts": []
+      },
+      {
+        "preset": "ptc",
+        "enabled": false,
+        "defaultModel": null,
+        "allowedModels": [],
+        "lockModel": false,
+        "defaultEffort": null,
+        "allowedEfforts": []
+      },
+      {
+        "preset": "minimal",
+        "enabled": false,
+        "defaultModel": null,
+        "allowedModels": [],
+        "lockModel": false,
+        "defaultEffort": null,
+        "allowedEfforts": []
+      },
+      {
+        "preset": "cordis",
+        "enabled": false,
+        "defaultModel": null,
+        "allowedModels": [],
+        "lockModel": false,
+        "defaultEffort": null,
+        "allowedEfforts": []
+      },
+      {
+        "preset": "dispatch",
+        "enabled": false,
+        "defaultModel": null,
+        "allowedModels": [],
+        "lockModel": false,
+        "defaultEffort": null,
+        "allowedEfforts": []
+      },
+      {
+        "preset": "planner",
+        "enabled": true,
+        "defaultModel": {
+          "provider": "codex-chatgpt",
+          "model": "gpt-6.1-sol"
+        },
+        "allowedModels": [
+          {
+            "provider": "opencode-go",
+            "model": "deepseek-v4.1-flash"
+          },
+          {
+            "provider": "codex-chatgpt",
+            "model": "gpt-6.1-sol"
+          }
+        ],
+        "lockModel": false,
+        "defaultEffort": "high",
+        "allowedEfforts": []
+      },
+      {
+        "preset": "researcher",
+        "enabled": true,
+        "defaultModel": {
+          "provider": "opencode-go",
+          "model": "deepseek-v4.1-flash"
+        },
+        "allowedModels": [
+          {
+            "provider": "opencode-go",
+            "model": "deepseek-v4.1-flash"
+          },
+          {
+            "provider": "codex-chatgpt",
+            "model": "gpt-6.1-sol"
+          }
+        ],
+        "lockModel": false,
+        "defaultEffort": "high",
+        "allowedEfforts": []
+      },
+      {
+        "preset": "investigator",
+        "enabled": true,
+        "defaultModel": {
+          "provider": "codex-chatgpt",
+          "model": "gpt-6.1-sol"
+        },
+        "allowedModels": [
+          {
+            "provider": "opencode-go",
+            "model": "deepseek-v4.1-flash"
+          },
+          {
+            "provider": "codex-chatgpt",
+            "model": "gpt-6.1-sol"
+          }
+        ],
+        "lockModel": false,
+        "defaultEffort": "high",
+        "allowedEfforts": []
+      },
+      {
+        "preset": "reviewer",
+        "enabled": true,
+        "defaultModel": {
+          "provider": "codex-chatgpt",
+          "model": "gpt-6.1-sol"
+        },
+        "allowedModels": [
+          {
+            "provider": "opencode-go",
+            "model": "deepseek-v4.1-flash"
+          },
+          {
+            "provider": "codex-chatgpt",
+            "model": "gpt-6.1-sol"
+          }
+        ],
+        "lockModel": false,
+        "defaultEffort": "medium",
+        "allowedEfforts": []
+      },
+      {
+        "preset": "implementer",
+        "enabled": true,
+        "defaultModel": {
+          "provider": "opencode-go",
+          "model": "deepseek-v4.1-flash"
+        },
+        "allowedModels": [
+          {
+            "provider": "opencode-go",
+            "model": "deepseek-v4.1-flash"
+          },
+          {
+            "provider": "codex-chatgpt",
+            "model": "gpt-6.1-sol"
+          }
+        ],
+        "lockModel": false,
+        "defaultEffort": "high",
+        "allowedEfforts": []
+      },
+      {
+        "preset": "test-author",
+        "enabled": true,
+        "defaultModel": {
+          "provider": "codex-chatgpt",
+          "model": "gpt-6.1-sol"
+        },
+        "allowedModels": [
+          {
+            "provider": "opencode-go",
+            "model": "deepseek-v4.1-flash"
+          },
+          {
+            "provider": "codex-chatgpt",
+            "model": "gpt-6.1-sol"
+          }
+        ],
+        "lockModel": false,
+        "defaultEffort": "high",
+        "allowedEfforts": []
+      },
+      {
+        "preset": "verifier",
+        "enabled": true,
+        "defaultModel": {
+          "provider": "opencode-go",
+          "model": "deepseek-v4.1-flash"
+        },
+        "allowedModels": [
+          {
+            "provider": "opencode-go",
+            "model": "deepseek-v4.1-flash"
+          },
+          {
+            "provider": "codex-chatgpt",
+            "model": "gpt-6.1-sol"
+          }
+        ],
+        "lockModel": false,
+        "defaultEffort": "high",
+        "allowedEfforts": []
+      }
+    ]
+  },
+  "presets": [
+    {
+      "id": "standard",
+      "order": 1,
+      "isDefault": true
+    },
+    {
+      "id": "ptc",
+      "order": 2,
+      "isDefault": false
+    },
+    {
+      "id": "minimal",
+      "order": 3,
+      "isDefault": false
+    },
+    {
+      "id": "cordis",
+      "order": 4,
+      "isDefault": false
+    },
+    {
+      "id": "dispatch",
+      "name": "调度模式",
+      "description": "基于 PTC 模式的调度 Agent：先分诊任务复杂度，L2 任务在规划前先做澄清访谈，再由主代理规划、派发子代理（显式选择子代理模型）、审查与验收。",
+      "order": 5,
+      "isDefault": false
+    },
+    {
+      "id": "planner",
+      "name": "规划架构",
+      "description": "只读规划、架构边界、方案比较与迁移风险；不实现、不执行测试。",
+      "order": 20,
+      "isDefault": false
+    },
+    {
+      "id": "researcher",
+      "name": "研究检索",
+      "description": "只读定位文件、符号、依赖与官方版本资料；不作代码验收。",
+      "order": 21,
+      "isDefault": false
+    },
+    {
+      "id": "investigator",
+      "name": "根因调查",
+      "description": "只读分析症状、触发条件、根因、生命周期与跨模块因果链。",
+      "order": 22,
+      "isDefault": false
+    },
+    {
+      "id": "reviewer",
+      "name": "代码审查",
+      "description": "对冻结候选进行独立只读审查，关注真实缺陷、授权与回归风险。",
+      "order": 23,
+      "isDefault": false
+    },
+    {
+      "id": "implementer",
+      "name": "实现开发",
+      "description": "在明确授权范围内修改生产代码；单写者，不承担独立测试验收。",
+      "order": 24,
+      "isDefault": false
+    },
+    {
+      "id": "test-author",
+      "name": "测试编写",
+      "description": "仅编写测试与夹具；不修改生产代码、不运行测试。",
+      "order": 25,
+      "isDefault": false
+    },
+    {
+      "id": "verifier",
+      "name": "测试验证",
+      "description": "执行 RED/GREEN、回归或剩余验收门禁；不手动修改源码与测试。",
+      "order": 26,
+      "isDefault": false
+    }
+  ],
+  "models": [
+    {
+      "provider": "deepseek-official",
+      "model": "deepseek-flash",
+      "name": "DeepSeek-V41-Flash"
+    },
+    {
+      "provider": "deepseek-official",
+      "model": "deepseek-v4-pro",
+      "name": "DeepSeek-V4-Pro"
+    },
+    {
+      "provider": "workbuddy-subscription",
+      "model": "deepseek-v4.1-flash",
+      "name": "Deepseek-V4.1-Flash"
+    },
+    {
+      "provider": "workbuddy-subscription",
+      "model": "glm-5.3",
+      "name": "GLM-5.3"
+    },
+    {
+      "provider": "workbuddy-subscription",
+      "model": "glm-5.3-flash",
+      "name": "GLM-5.3-Flash"
+    },
+    {
+      "provider": "workbuddy-subscription",
+      "model": "kimi-k3-1",
+      "name": "Kimi-K3"
+    },
+    {
+      "provider": "codex-chatgpt",
+      "model": "gpt-6-astra",
+      "name": "6 Astra"
+    },
+    {
+      "provider": "codex-chatgpt",
+      "model": "gpt-6.1-sol",
+      "name": "6.1 Sol"
+    },
+    {
+      "provider": "codex-chatgpt",
+      "model": "gpt-6-sol",
+      "name": "6 Sol"
+    },
+    {
+      "provider": "codex-chatgpt",
+      "model": "gpt-6-luna",
+      "name": "6 Luna"
+    },
+    {
+      "provider": "codex-chatgpt",
+      "model": "gpt-5.6-terra",
+      "name": "5.6 Terra"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "deepseek-v4.1-flash",
+      "name": "DeepSeek V4.1 Flash"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "glm-5.3",
+      "name": "GLM-5.3"
+    },
+    {
+      "provider": "opencode-go",
+      "model": "glm-5.3-flash",
+      "name": "GLM-5.3-Flash"
+    }
+  ],
+  "hostPolicy": {
+    "enabled": true,
+    "allowedModels": [
+      {
+        "provider": "opencode-go",
+        "model": "deepseek-v4.1-flash"
+      },
+      {
+        "provider": "codex-chatgpt",
+        "model": "gpt-6.1-sol"
+      }
+    ]
+  }
+}

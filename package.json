@@ -1,0 +1,12 @@
+{
+  "name": "@local/dsh-preset-dispatch",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Agent 管理: persistent native agent presets with role, permission and dispatch policy in one place",
+  "type": "module",
+  "exports": { ".": "./index.js", "./host": "./index.js", "./client": "./client.js", "./role": "./role-plugin.js", "./package.json": "./package.json" },
+  "files": ["entry.js", "managed-presets.js", "management-api.js", "catalog.js", "catalog-cache.js", "role-managed.js", "history.js", "history-store.js", "roles-configured.js", "roles-active.js", "roles-final.js", "roles-live.js", "roles-entry.js", "role-plugin.js", "roles.js", "routing.js", "settings-final.js", "host.js", "index.js", "core.js", "policy.js", "save-protocol.js", "settings-api.js", "client.js", "cordis.patch.yml", "README.md", "MAINTENANCE.md", "LICENSE", "docs", "scripts", "test"],
+  "scripts": { "test": "node scripts/test.mjs", "test:spawn": "node --test test/*.test.js", "check": "node scripts/check.mjs", "pack": "node scripts/pack-check.mjs", "storage": "node scripts/storage-contract-check.mjs", "verify": "node scripts/check.mjs && node scripts/test.mjs && node scripts/pack-check.mjs && node scripts/storage-contract-check.mjs" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" }, "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-settings"] } },
+  "peerDependencies": { "@deepseek-ai/dsh": "0.2.0-rc.2" }
+}
