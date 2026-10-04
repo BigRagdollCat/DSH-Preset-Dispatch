@@ -78,7 +78,7 @@
 | routing.js | `333fa429e365a4d3` |
 | entry.js | `0461133659dab58e` |
 | cordis.patch.yml | `2e8aed161f5f8015` |
-| package.json | `0d10be2a3689027b` |
+| package.json | `548575cd40b69c50` |
 | index.js | `c483a209fff9b985` |
 | scripts/check.mjs | `efcbf646ed5b1a96` |
 | test/package.test.js | `4f5335f036f9bb8c` |
@@ -111,6 +111,7 @@
 | scripts/pack-check.mjs | `dfca174cb6c8b294` |
 | scripts/live-probe.mjs | `a7560132dca76d72` |
 | scripts/storage-contract-check.mjs | `8251e2ce14ced99b` |
+| screenshots.json | `b2e501308e5bc7b8` |
 
 独立验证证据见 [验证](#验证) 一节；浏览器端视觉与真机点击仍需用户在本机确认。
 
