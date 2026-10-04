@@ -66,10 +66,13 @@
 前提：DeepSeek Harness 运行时 **0.2.0-rc.2**（见 [兼容性](#兼容性)）。
 
 ```bash
-# 1) 从源码目录安装（把路径换成本仓库的实际位置）
-dsh plugin --profile web add <本仓库的绝对路径>
+# 1) 克隆仓库
+git clone https://github.com/BigRagdollCat/DSH-Preset-Dispatch.git
 
-# 2) 重启 dsh web —— 插件的 Host 代码只在进程重启时重新加载
+# 2) 安装（把路径换成你克隆到的位置）
+dsh plugin --profile web add ./DSH-Preset-Dispatch
+
+# 3) 重启 dsh web —— 插件的 Host 代码只在进程重启时重新加载
 ```
 
 安装后打开 DSH 设置，应能看到「Agent 管理」分区；卡片为原生风格网格。
