@@ -66,7 +66,8 @@ function fixture(options = {}) {
 
 test('preset policy disables dispatch and list metadata', async () => {
   const f = fixture({ presetPolicies: [{ preset: 'minimal', enabled: false }] });
-  assert.equal((await f.runtime.listTool.execute()).presets[0].dispatchable, false);
+  // Diagnostic mode keeps the whole roster, so the row for the disabled preset stays observable.
+  assert.equal((await f.runtime.listTool.execute({ diagnostic: true })).presets[0].dispatchable, false);
   await assert.rejects(f.call({}), /not allowed/); assert.equal(f.state.creates.length, 0);
 });
 test('preset defaults cannot bypass disabled Host selection', async () => {
@@ -79,17 +80,25 @@ test('preset locked default is forwarded and rejects override', async () => {
   await assert.rejects(f.call({ provider: 'p', model: 'm' }), /locked/);
 });
 test('list preserves metadata and activation failures', async () => {
-  const f = fixture(); const value = await f.runtime.listTool.execute();
+  // The compact default answer lists only dispatchable presets, so the second row — and with it
+  // the `loaded:false` activation failure — is observable through the diagnostic answer only.
+  const f = fixture(); const value = await f.runtime.listTool.execute({ diagnostic: true });
   assert.equal(value.presets[0].description, 'Small'); assert.equal(value.presets[0].dispatchable, true); assert.equal(value.presets[1].loaded, false);
 });
 // The advertised model sets must equal what dispatch will actually accept, otherwise a
-// dispatch agent picks a route the very next call refuses.
+// dispatch agent picks a route the very next call refuses. The default answer is the compact
+// dispatch list (docs/08 C02); the full per-preset model rows are the diagnostic answer (C03).
 test('advertised models are empty whenever explicit selection is unavailable', async () => {
   const live = await fixture().runtime.listTool.execute();
   assert.equal(live.explicitSelectionAvailable, true);
   assert.equal(live.models.length, 2, 'an enabled pool advertises its routes');
   assert.equal('note' in live, false, 'no note key when explicit selection is available');
   assert.deepEqual(JSON.parse(JSON.stringify(live)), live, 'the tool result must survive a JSON round-trip');
+  assert.deepEqual(live.presets.map(preset => preset.id), ['minimal'], 'the compact answer drops presets that cannot be dispatched');
+
+  const diagnostic = await fixture().runtime.listTool.execute({ diagnostic: true });
+  assert.deepEqual(diagnostic.presets.map(preset => preset.id), ['minimal', 'broken'], 'diagnostic mode keeps the unloadable preset visible');
+  assert.equal(diagnostic.presets[0].usableModels.length, 2, 'the full answer still carries the per-preset model rows');
 
   const hostOff = await fixture({ selectionEnabled: false, presetPolicies: [{ preset: 'minimal', enabled: true, defaultModel: null, allowedModels: [{ provider: 'p', model: 'm' }], modelScope: 'selected', allowedEfforts: [] }] }).runtime.listTool.execute();
   assert.equal(hostOff.explicitSelectionAvailable, false);
@@ -180,4 +189,36 @@ test('background requires an attached controller before starting child', async (
 test('pure inheritance remains available with explicit selection disabled', async () => {
   const f = fixture({ selectionEnabled: false });
   assert.equal((await f.call({})).stopReason, 'completed');
+});
+
+// Review defect 1: exercise the returned value through the tool's real presentation port.
+test('foreground return and persisted run envelope retain the calling parent session id', async () => {
+  const f = fixture();
+  const args = { preset: 'minimal', task: 'Return OK' };
+  const value = await f.call(args);
+  assert.equal(value.kind, 'foreground');
+  assert.equal(f.state.creates.length, 1, 'the assertion must follow a real dispatch');
+  const meta = f.runtime.dispatchTool.output.presentationMeta(args, value);
+  assert.equal(meta.marker, 'preset-dispatch/run');
+  assert.equal(meta.childSessionId, f.state.children[0].id);
+  assert.notEqual(meta.childSessionId, f.parent.id, 'the child is not the calling session');
+  assert.equal(value.parentSessionId, f.parent.id, 'the model-facing return must name its caller');
+  assert.equal(meta.parentSessionId, f.parent.id, 'presentationMetaFor must preserve the real caller');
+});
+
+test('background return and persisted run envelope retain the calling parent session id', async () => {
+  const f = fixture();
+  const args = { preset: 'minimal', task: 'Return OK', run_in_background: true };
+  const value = await f.call(args);
+  // Drain the fixture job even when a later assertion fails; the returned object is unchanged.
+  await f.state.jobs[0].hooks.done;
+  assert.equal(value.kind, 'background');
+  assert.equal(f.state.jobs[0].spec.owner, f.parent.id);
+  const meta = f.runtime.dispatchTool.output.presentationMeta(args, value);
+  assert.equal(meta.marker, 'preset-dispatch/run');
+  assert.equal(meta.child.jobId, value.jobId);
+  assert.equal(meta.childSessionId, value.childSessionId);
+  assert.notEqual(meta.childSessionId, f.parent.id);
+  assert.equal(value.parentSessionId, f.parent.id, 'the immediate background return must name its caller');
+  assert.equal(meta.parentSessionId, f.parent.id, 'presentationMetaFor must not lose the caller in background mode');
 });

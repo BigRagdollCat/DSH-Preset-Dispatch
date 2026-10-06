@@ -28,6 +28,11 @@ window.__ModuleLoader__.load({
       depth: '最大派遣深度', depthHint: '默认 1 层。实际深度同时受 DSH 全局限制约束，0 表示禁止派遣。',
       orphan: '发现失效策略行', orphanHint: '这些预设已不在 DSH 预设列表中，对应策略行仍被保留。清理后不可恢复。', orphanClean: '清理失效策略',
       historyTitle: '调用记录', historyHint: '仅保留最近 50 条元数据（角色、模型、强度、时间、状态），不保存任务、回答或推理内容。记录写入本地存储，重启后仍在；中断的派遣会标记为已中断。', historyRefresh: '刷新记录', historyEmpty: '暂无调用记录',
+      dispatchTitle: '派遣子代理', dispatchPreparing: '准备中', dispatchStarted: '已派遣，等待子会话', dispatchResult: '派遣结果',
+      planLabel: '计划配置', actualLabel: '实际请求', planPending: '计划配置，尚未观察到实际请求', restoredUnknown: '历史配置，未核实实际请求',
+      verifiedActual: '实际请求（已核实）', unknownValue: '未知', adapterDefault: '模型默认（具体值未披露）', notStarted: '未确认启动',
+      childSession: '子会话', callRef: '调用', presetSnapshot: '预设快照', noArgs: '（参数未记录）',
+      badgeTitle: '本插件派遣的子代理', badgeCollapsed: '展开详情', badgeUnknown: '实际配置未核实',
       dirty: '有未保存的更改', clean: '已同步', saved: '已保存并生效', savedPartial: '部分已保存', deleteTitle: '删除预设', deleteHint: '删除后关联派遣策略会保留但不能调用。默认预设、仍有活跃会话的预设会被拒绝。',
       confirmDiscard: '放弃当前未保存的更改？', confirmReload: '放弃未保存的更改并重新读取？',
       copy: '复制', remove: '删除', version: '版本', brokenPreset: '预设加载异常：', missingPreset: '该预设已不在 DSH 预设列表中（可能已被删除）。',
@@ -124,6 +129,38 @@ window.__ModuleLoader__.load({
 .pdispatch .pd-list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
 @media(max-width:640px){.pdispatch .pd-grid{grid-template-columns:1fr}.pdispatch .pd-card-id{max-width:45%}}
 @media(prefers-reduced-motion:reduce){.pdispatch *{transition:none!important;animation:none!important}}
+`;
+    // Styles for the two surfaces that render OUTSIDE the settings page (the dispatch card in
+    // the chat transcript and the read-only badge in a child session). They are injected by the
+    // plugin itself rather than relying on the settings page having been opened, and they use a
+    // separate `pdv-` prefix so the page stylesheet and this one cannot fight over a class.
+    const viewCss = `
+.pdv-card,.pdv-badge{color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.6;box-sizing:border-box}
+.pdv-card *,.pdv-badge *{box-sizing:border-box}
+.pdv-card{display:flex;flex-direction:column;gap:6px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,12px);background:var(--dsw-alias-bg-layer-1);padding:10px 12px;margin:2px 0}
+.pdv-head{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.pdv-name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.pdv-muted{color:var(--dsw-alias-label-secondary);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdv-pill{font-size:11px;line-height:18px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.pdv-pill-plan{color:var(--dsw-alias-state-warn-primary,var(--dsw-alias-state-error-primary));border-color:var(--dsw-alias-state-warn-primary,var(--dsw-alias-state-error-primary))}
+.pdv-pill-error{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-primary)}
+.pdv-route{display:flex;align-items:baseline;gap:8px;min-width:0}
+.pdv-route-key{color:var(--dsw-alias-label-secondary);font-size:12px;flex:0 0 auto}
+.pdv-route-value{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px}
+.pdv-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pdv-btn{appearance:none;height:26px;padding:0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,8px);background:0 0;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.pdv-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,var(--dsw-alias-bg-layer-2))}
+.pdv-details{border-top:.5px solid var(--dsw-alias-border-l2);padding-top:6px;display:flex;flex-direction:column;gap:4px}
+.pdv-detail-row{display:flex;gap:8px;min-width:0;font-size:12px;color:var(--dsw-alias-label-secondary)}
+.pdv-detail-row code{font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);overflow-wrap:anywhere}
+.pdv-error{color:var(--dsw-alias-state-error-primary);font-size:12px;overflow-wrap:anywhere}
+.pdv-pre{margin:0;max-height:220px;overflow:auto;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-sm,8px);background:var(--dsw-alias-bg-layer-2);padding:8px;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-secondary)}
+.pdv-badge-wrap{display:inline-flex;flex-direction:column;gap:4px;min-width:0;max-width:100%}
+.pdv-badge{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:0 0;padding:0 8px;height:24px;font-size:12px;cursor:pointer;color:var(--dsw-alias-label-secondary)}
+.pdv-badge:hover{background:var(--dsw-alias-interactive-bg-hover,var(--dsw-alias-bg-layer-2))}
+.pdv-badge-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdv-badge-unknown{color:var(--dsw-alias-state-warn-primary,var(--dsw-alias-state-error-primary))}
+@media(max-width:640px){.pdv-card{padding:8px 10px}.pdv-route-value{font-size:11px}}
 `;
     const routeKey = route => JSON.stringify([route.provider, route.model]);
     return { inject: ['slots', 'locale'], apply(ctx) {
@@ -543,11 +580,25 @@ window.__ModuleLoader__.load({
           if(!edit||!data)return null;
           const body=[];let footer=null;
           if(edit.kind==='history'){
-            const list=runs===null?h('div',{className:'pd-empty'},runError||t('loading')):(runs.length?h('ul',{className:'pd-list'},...runs.map((run,index)=>h('li',{className:'pd-card',key:index},
-              h('div',{className:'pd-card-main'},
-                h('span',{className:'pd-card-head'},h('span',{className:'pd-card-identity'},h('span',{className:'pd-card-name'},run.preset),h('span',{className:'pd-pill'},String(run.status||''))),cardId(run.startedAt||'')),
-                h('span',{className:'pd-card-desc'},(run.provider||'?')+' / '+(run.model||'?')+' · '+(run.reasoningEffort||'模型默认')),
-                h('span',{className:'pd-muted'},'模型：'+source(run.modelSource)+'；强度：'+source(run.effortSource)+'；角色版本：'+String(run.presetVersion??'外部')))))):h('div',{className:'pd-empty'},t('historyEmpty')));
+            // Each record distinguishes what was PLANNED from what a request actually observed.
+            // A record without an observed request is labelled as unverified rather than being
+            // shown as if the planned route had been the real one — including every record that
+            // was restored from an older version, which never had the observed fields at all.
+            const historyRow=(run,index)=>{
+              const observed=run.observedRouting&&typeof run.observedRouting==='object'?run.observedRouting:null;
+              const planned=run.plannedRouting&&typeof run.plannedRouting==='object'?run.plannedRouting:null;
+              const legacy=!run.observationState&&!observed;
+              const verified=!!observed;
+              const route=verified?observed:(planned||run);
+              const effortSource=verified?(observed.reasoningEffort?run.effortSource:'adapter-default'):run.modelSource;
+              return h('li',{className:'pd-card',key:index},
+                h('div',{className:'pd-card-main'},
+                  h('span',{className:'pd-card-head'},h('span',{className:'pd-card-identity'},h('span',{className:'pd-card-name'},run.presetName||run.preset),h('span',{className:'pd-pill'+(verified?' pd-pill-on':''),title:verified?t('verifiedActual'):(legacy?t('restoredUnknown'):t('planPending'))},verified?t('actualLabel'):(legacy?'历史记录':t('planLabel'))),h('span',{className:'pd-pill'},String(run.status||''))),cardId(run.startedAt||'')),
+                  h('span',{className:'pd-card-desc'},(route.provider||'?')+' / '+(route.model||'?')+' · '+(route.reasoningEffort||t('adapterDefault'))),
+                  planned&&verified?h('span',{className:'pd-muted'},t('planLabel')+'：'+(planned.provider||'?')+' / '+(planned.model||'?')+' · '+(planned.reasoningEffort||t('unknownValue'))):null,
+                  h('span',{className:'pd-muted'},(verified?t('actualLabel'):(legacy?'历史记录，未核实实际请求':t('planPending')))+'；模型：'+source(run.modelSource)+'；强度：'+source(effortSource)+(run.callId?'；调用：'+run.callId:'')+(run.childSessionId?'；子会话：'+run.childSessionId:''))));
+            };
+            const list=runs===null?h('div',{className:'pd-empty'},runError||t('loading')):(runs.length?h('ul',{className:'pd-list'},...runs.map(historyRow)):h('div',{className:'pd-empty'},t('historyEmpty')));
             body.push(h('div',{className:'pd-section'},h('div',{className:'pd-row'},h('span',{className:'pd-muted'},t('historyHint')),h('button',{type:'button',className:'pd-btn',disabled:busy,onClick:()=>{setRuns(null);request('history').then(value=>setRuns(value.runs)).catch(e=>setRunError(localError(e.message)));}},t('historyRefresh'))),list));
             footer=h('button',{type:'button',className:'pd-btn pd-primary',disabled:busy,onClick:close},'关闭');
           } else if(edit.kind==='global'){
@@ -684,7 +735,312 @@ window.__ModuleLoader__.load({
               h('ul',{className:'pd-cards'},...external.map(externalCard)))),
           dialog());
       }
+      // ---------------------------------------------------------------------------------------
+      // Phase B: the dispatch card, the child-session badge and their shared data helpers.
+      //
+      // Everything below reads only public slot props and the plugin's own metadata route. It
+      // imports no Harness Client package and never asks the model for anything: the card and
+      // the badge show what the dispatch already recorded, and a live update arrives over the
+      // visibility stream instead of a poll.
+      // ---------------------------------------------------------------------------------------
+      const parseArgsRaw = raw => { try { const value = JSON.parse(raw); return value && typeof value === 'object' ? value : null; } catch { return null; } };
+      const sourceText = code => dict.source[code] || code || t('unknownValue');
+      /** Route text for a narrow surface; never invents a value it was not given. */
+      const routeLine = (route, source) => {
+        if (!route || (!route.provider && !route.model)) return t('unknownValue');
+        const head = route.provider && route.model ? route.provider + ' / ' + route.model : (route.model || route.provider);
+        const effort = route.reasoningEffort || (source === 'adapter-default' ? t('adapterDefault') : t('unknownValue'));
+        return head + ' · ' + effort + '（' + sourceText(source) + '）';
+      };
+      const statusText = status => ({ pending: '准备中', running: '运行中', completed: '已完成', failed: '失败', aborted: '已取消', interrupted: '已中断', killed: '已终止' })[status] || String(status ?? t('unknownValue'));
+      /**
+       * The read-only visibility request for one dispatch record.
+       *
+       * The endpoint binds a record to its parent session, so `parentSession` is sent whenever it
+       * is known: without it a normal card is refused (403) rather than served. `bound` reports
+       * whether it could be stated at all — a surface that cannot name the parent must say the
+       * configuration is unverified instead of implying the lookup was complete.
+       */
+      const visibilityUrl = ids => {
+        const query = [];
+        for (const key of ['parentSession', 'callId', 'childSessionId']) if (ids && ids[key]) query.push(key + '=' + encodeURIComponent(ids[key]));
+        return '/api/preset-dispatch/visibility?' + query.join('&');
+      };
+      /**
+       * Follow one dispatch record over SSE. Returns a disposer; the stream is closed as soon as
+       * a settled status arrives, so nothing keeps a socket open for a finished run.
+       */
+      const openVisibilityStream = (ids, onFrame, onGap) => {
+        const stream = globalThis.EventSource;
+        if (typeof stream !== 'function') { onGap?.('no-event-source'); return () => {}; }
+        let source = null;
+        try { source = new stream(visibilityUrl(ids)); } catch { onGap?.('open-failed'); return () => {}; }
+        const settle = payload => {
+          const status = payload?.status;
+          if (status === 'completed' || status === 'failed' || status === 'aborted' || status === 'interrupted' || status === 'killed') {
+            try { source.close(); } catch { /* already closed */ }
+          }
+        };
+        source.addEventListener('snapshot', event => { try { const payload = JSON.parse(event.data); onFrame(payload); settle(payload); } catch { /* a malformed frame is ignored */ } });
+        // `pending` means nothing is recorded yet; it is reported, never rendered as a fact.
+        source.addEventListener('pending', () => onFrame(null));
+        source.addEventListener('error', () => onGap?.('stream-error'));
+        return () => { try { source.close(); } catch { /* already closed */ } };
+      };
+      /**
+       * Follow one run while a component is mounted; a failed stream degrades to metadata only.
+       *
+       * The stream is only opened once the record is addressable and bound: without a call id or a
+       * child session id the endpoint has nothing to look up, and without the parent session it
+       * refuses the request outright, so a stream opened for either case could only be rejected.
+       * `unbound` reports that the parent session could not be stated — a known gap the surface
+       * discloses instead of hiding behind an apparently complete lookup.
+       */
+      const useVisibility = (ids, enabled) => {
+        const [row, setRow] = React.useState(null);
+        const [gap, setGap] = React.useState(false);
+        const addressable = !!(ids && (ids.callId || ids.childSessionId));
+        const unbound = addressable && !ids.parentSession;
+        const key = [ids?.parentSession || '', ids?.callId || '', ids?.childSessionId || ''].join('|');
+        React.useEffect(() => {
+          setRow(null); setGap(false);
+          // A dispatch record is bound to the session that dispatched it, so a request that cannot
+          // state the parent session is refused rather than served. Such a frame never arrives, so
+          // no stream is opened for it: the surface discloses the unverified value instead of
+          // holding a socket that can only be rejected.
+          if (!enabled || !addressable || unbound) return undefined;
+          let disposed = false;
+          const dispose = openVisibilityStream(ids, payload => { if (!disposed) setRow(payload); }, () => { if (!disposed) setGap(true); });
+          return () => { disposed = true; dispose(); };
+        }, [key, enabled]);
+        return { row, gap, unbound };
+      };
+      const detailRow = (label, value, mono) => h('div',{className:'pdv-detail-row',key:label+String(value)},h('span',null,label),mono?h('code',null,String(value)):h('span',null,String(value)));
+      const metaOf = block => (block && typeof block.meta === 'object' && block.meta !== null ? block.meta : null);
+      const contentText = block => {
+        const blocks = Array.isArray(block?.content) ? block.content : [];
+        return blocks.map(item => (typeof item?.text === 'string' ? item.text : '')).join('\n').trim();
+      };
+      /**
+       * Read one navigation service through the composition (`ctx.get`), never from a property on
+       * the context: the services are optional composition members, so an absent one hides its
+       * entry point instead of failing the card.
+       */
+      const navService = name => { try { return ctx.get(name) ?? null; } catch { return null; } };
+      /**
+       * The child session id this card may navigate to, or null when nothing is confirmed yet.
+       *
+       * Only a session that actually started is navigable: the recorded metadata confirms it with
+       * `child.started === true`, and a running card takes the id from a visibility frame. A frame
+       * is only proof once its `observationStatus` says the child was created, was observed
+       * committing a request, or finished — the reserved id exists before the child does, so a
+       * frame that still reports `pending` (or reports nothing at all) is not a start. A background
+       * dispatch that reserved an id but reported `started: false`, a result envelope without
+       * `child`, and the preparing phase all leave this null, so no entry point is offered for a
+       * session that may never exist. A metadata id that is not confirmed is not used either — the
+       * frame, which reports the session a run really started, is the authority then.
+       */
+      const confirmedChildSession = (meta, row) => {
+        const recorded = meta?.child ?? null;
+        if (recorded && recorded.started === true && typeof recorded.sessionId === 'string' && recorded.sessionId) return recorded.sessionId;
+        const fromFrame = row?.childSessionId;
+        if (typeof fromFrame !== 'string' || !fromFrame) return null;
+        const state = row?.observationStatus;
+        return state === 'created' || state === 'observed' || state === 'finished' ? fromFrame : null;
+      };
+      /**
+       * The two navigation entry points for a confirmed child session.
+       *
+       * Both services are looked up during render (never from a stored reference), and rendering
+       * itself navigates nowhere: each button only calls its own service when it is clicked. When a
+       * service is missing only that button is hidden, so the other entry point stays usable.
+       */
+      const childNavActions = childSessionId => {
+        if (!childSessionId) return null;
+        const workspace = navService('uiWorkspace');
+        const sidebar = navService('sidebarRight');
+        const buttons = [];
+        if (workspace && typeof workspace.openSession === 'function') {
+          buttons.push(h('button',{type:'button',className:'pdv-btn',key:'enter-child',onClick:() => workspace.openSession(childSessionId)},'进入子会话'));
+        }
+        if (sidebar && typeof sidebar.openResource === 'function') {
+          buttons.push(h('button',{type:'button',className:'pdv-btn',key:'open-sidebar',
+            onClick:() => sidebar.openResource('dsh-resource://subagentchat/session/' + childSessionId, { kind: 'subagentchat', preferNewPane: true })},'在侧边栏打开'));
+        }
+        return buttons.length ? h('div',{className:'pdv-actions',key:'child-nav'},...buttons) : null;
+      };
+
+      /**
+       * The `preset_dispatch` tool call row. Three phases are rendered from the phase props
+       * alone: preparing has no arguments yet, start has the dispatched arguments, and result
+       * adds the persisted presentation meta, the outcome and the inspection entry point.
+       */
+      function DispatchCard(props) {
+        const { phase, block, useDisclosure, inspect } = props;
+        const disclosure = typeof useDisclosure === 'function' ? useDisclosure() : { expanded: false, toggle() {} };
+        const args = phase === 'preparing' ? null : parseArgsRaw(phase === 'start' ? block?.argsRaw : block?.call?.argsRaw);
+        // The persisted dispatch envelope is read from the start phase on: a real start block often
+        // carries none, so every read below falls back to the arguments and to the record row.
+        const meta = phase === 'preparing' ? null : metaOf(block);
+        const presetId = args?.preset ?? meta?.preset ?? null;
+        const ids = {
+          parentSession: meta?.parentSessionId ?? meta?.parentSession ?? props.parentSession ?? props.sessionId ?? null,
+          callId: meta?.callId ?? meta?.call?.id ?? props.callId ?? null,
+          childSessionId: meta?.childSessionId ?? meta?.child?.sessionId ?? null,
+        };
+        const { row, gap, unbound } = useVisibility(ids, phase !== 'preparing');
+        /**
+         * The identity THIS run recorded, frozen at the first value the record row stated.
+         *
+         * A name and a version belong to one dispatch: a later frame may carry a rename or a
+         * re-defined preset, which describes a later preset definition rather than this dispatch.
+         * The ref is keyed by the run's own identifiers, so a card surface that moves on to another
+         * dispatch takes that run's record instead of keeping this one's frozen value.
+         */
+        const identity = React.useRef({ key: null, name: null, version: null });
+        const identityKey = [ids.parentSession ?? '', ids.callId ?? '', ids.childSessionId ?? ''].join('|');
+        if (identity.current.key !== identityKey) identity.current = { key: identityKey, name: null, version: null };
+        if (identity.current.name === null && typeof row?.presetName === 'string' && row.presetName !== '') identity.current.name = row.presetName;
+        if (identity.current.version === null && row?.presetVersion !== null && row?.presetVersion !== undefined) identity.current.version = row.presetVersion;
+        // A result keeps the dispatch-time envelope and fills only a field the envelope does not
+        // carry from the record row; a running card takes the record row first and falls back to the
+        // envelope until the row states a value. Both then fall back to the dispatched preset id.
+        const presetName = phase === 'result'
+          ? (meta?.presetName ?? identity.current.name ?? presetId ?? t('dispatchTitle'))
+          : (identity.current.name ?? meta?.presetName ?? presetId ?? t('dispatchTitle'));
+        const presetVersion = phase === 'result'
+          ? (meta?.presetVersion ?? identity.current.version ?? null)
+          : (identity.current.version ?? meta?.presetVersion ?? null);
+        // The stream payload names the planned routing `planned`; the persisted snapshot calls it
+        // `plan`. A live row wins, because it is the record this run actually wrote.
+        const planned = row?.planned ?? (meta?.plan ? { ...meta.plan } : null);
+        const observed = row?.observed ?? meta?.observedRouting ?? null;
+        const verified = observed !== null && observed !== undefined;
+        // The record row is authoritative for the outcome whenever one exists: a start-phase card
+        // whose run already failed, was cancelled or finished must show that, not the "dispatched,
+        // waiting for the child" wording that only describes a run with nothing recorded yet.
+        const status = phase === 'preparing'
+          ? t('dispatchPreparing')
+          : (row?.status !== null && row?.status !== undefined
+            ? statusText(row.status)
+            : (phase === 'start' ? t('dispatchStarted') : statusText(meta?.run?.status ?? meta?.status)));
+        const failed = phase === 'result' && block?.isError === true;
+        const errorReason = block?.error?.reason || block?.error?.code || null;
+        // The actual-request row is rendered from the start phase on: a submitted task has not been
+        // observed yet, so it says so instead of showing nothing, and a stream frame replaces it the
+        // moment the child's own committed request is known.
+        const actualRow = () => h('div',{className:'pdv-route',key:'actual'},
+          h('span',{className:'pdv-route-key'},t('actualLabel')),
+          h('span',{className:'pdv-route-value',title:verified?routeLine(observed,row?.observedEffortSource):t('planPending')},
+            verified ? routeLine(observed,row?.observedEffortSource) : (row?.restored ? t('restoredUnknown') : t('planPending'))));
+        const body = [];
+        body.push(h('div',{className:'pdv-head',key:'head'},
+          h('span',{className:'pdv-name',title:String(presetName)},String(presetName)),
+          presetId && presetId !== presetName ? h('span',{className:'pdv-muted',title:String(presetId)},String(presetId)) : null,
+          presetVersion !== null && presetVersion !== undefined ? h('span',{className:'pdv-pill'},t('version')+' '+String(presetVersion)) : null,
+          h('span',{className:'pdv-pill'+(failed?' pdv-pill-error':phase==='result'?'':' pdv-pill-plan'),key:'status'},failed?'失败':status),
+          phase==='start' ? h('span',{className:'pdv-muted'},t('planPending')) : null));
+        if (phase !== 'preparing') {
+          body.push(h('div',{className:'pdv-route',key:'plan'},
+            h('span',{className:'pdv-route-key'},t('planLabel')),
+            h('span',{className:'pdv-route-value',title:routeLine(planned, planned?.modelSource)},routeLine(planned, planned?.modelSource))));
+          body.push(actualRow());
+          // A lookup that cannot state the parent session is refused by the endpoint, so the
+          // unverified actual value is disclosed as such instead of reading as a complete answer.
+          if (unbound) body.push(h('p',{className:'pdv-muted',key:'unbound'},'未提供父会话，实时状态未核实：实际请求无法与本次派遣绑定。'));
+          if (gap) body.push(h('p',{className:'pdv-muted',key:'gap'},'实时状态不可用，以下为已记录元数据。'));
+        }
+        if (phase === 'result') {
+          const text = contentText(block);
+          body.push(h('div',{className:'pdv-actions',key:'actions'},
+            h('button',{type:'button',className:'pdv-btn',onClick:disclosure.toggle,'aria-expanded':disclosure.expanded===true},disclosure.expanded?'收起详情':'展开详情'),
+            typeof inspect === 'function' ? h('button',{type:'button',className:'pdv-btn',onClick:inspect},'在轨迹中查看') : null,
+            failed ? h('span',{className:'pdv-error'},'错误'+(errorReason?'：'+errorReason:'')) : null));
+          if (disclosure.expanded) {
+            const details = [];
+            details.push(detailRow(t('callRef'), ids.callId ?? t('unknownValue'), true));
+            details.push(detailRow(t('childSession'), ids.childSessionId ?? t('notStarted'), true));
+            if (meta?.child?.jobId) details.push(detailRow('后台作业', meta.child.jobId, true));
+            if (row?.verificationDetail) details.push(detailRow('核实', row.verificationDetail, false));
+            body.push(h('div',{className:'pdv-details',key:'details'},
+              ...details,
+              text ? h('pre',{className:'pdv-pre',key:'content'},text) : h('p',{className:'pdv-muted',key:'nocontent'},'（无文本结果）')));
+          }
+        }
+        if (phase === 'start') body.push(h('p',{className:'pdv-muted',key:'started'},'任务已提交；实际模型与思考强度以子会话的首个请求为准。'));
+        // Navigation is offered from the start phase on, but only once a child session is really
+        // confirmed: the preparing phase has no dispatch at all, and an unconfirmed child has no
+        // session to enter.
+        if (phase !== 'preparing') body.push(childNavActions(confirmedChildSession(meta,row)));
+        return h('div',{className:'pdv-card'},h('style',null,viewCss),...body);
+      }
+
+      /**
+       * The read-only badge appended to a child session's composer, or to its header when no
+       * composer is rendered.
+       *
+       * It is shown only for a subagent session whose own projection exists AND whose dispatch
+       * record this plugin actually holds: a session that merely has a preset id is not proof
+       * that this plugin created it. A record without an observed request is labelled as such
+       * rather than being presented as the real configuration.
+       */
+      function ChildBadge(props) {
+        const { sessionId, useProjection } = props;
+        let route = null;
+        if (typeof useProjection === 'function') { try { route = useProjection('presetDispatchRoute'); } catch { route = null; } }
+        const isChild = route !== null && route !== undefined && route.origin === 'subagent' && typeof route.agentPreset === 'string' && route.agentPreset !== '';
+        // The parent session comes from the child's own projection header (or the slot props when
+        // the surface is rendered inside the dispatching session). The endpoint binds a record to
+        // its parent, so it is sent whenever it is known; `unbound` marks the case where it is not.
+        const parentSession = props.parentSession ?? route?.parentSession ?? null;
+        const { row, gap, unbound } = useVisibility({ childSessionId: sessionId, parentSession }, isChild);
+        const [open, setOpen] = React.useState(false);
+        if (!isChild) return null;
+        // No record yet, or a stream that never answered: show nothing rather than a guess.
+        if (!row || row.pending === true) return null;
+        const observed = row.observed ?? null;
+        const verified = observed !== null && observed !== undefined;
+        const name = row.presetName || row.preset || route.agentPreset;
+        const short = [name, observed?.model || row.planned?.model || null, observed?.reasoningEffort || null].filter(Boolean).join(' · ');
+        const detail = [
+          t('planLabel') + '：' + routeLine(row.planned, row.planned?.modelSource),
+          t('actualLabel') + '：' + (verified ? routeLine(observed, row.observedEffortSource) : (row.restored ? t('restoredUnknown') : t('planPending'))),
+          t('presetSnapshot') + '：' + String(row.preset ?? route.agentPreset) + (row.presetVersion === null || row.presetVersion === undefined ? '' : ' · v' + String(row.presetVersion)),
+          t('childSession') + '：' + String(sessionId ?? ''),
+          row.verification || '',
+          unbound ? '未提供父会话，实际请求未核实。' : '',
+        ].filter(Boolean);
+        return h('span',{className:'pdv-badge-wrap'},
+          h('style',null,viewCss),
+          h('button',{type:'button',className:'pdv-badge','aria-expanded':open===true,title:short,onClick:()=>setOpen(value=>!value)},
+            h('span',{className:'pdv-badge-text'},short),
+            verified ? null : h('span',{className:'pdv-badge-unknown'},t('badgeUnknown'))),
+          open ? h('span',{className:'pdv-details'},...detail.map((line,index)=>h('span',{className:'pdv-detail-row',key:index},line)),gap?h('span',{className:'pdv-detail-row'},'实时状态不可用'):null) : null);
+      }
+
       ctx.slots.inject('settings.section', () => ctx.slots.register({name:'settings.section',id:'preset-dispatch',order:21,label:() => t('title')},Page));
+      // Each chat surface is contributed to its own DECLARED slot: `slots.inject(key, ...)` only
+      // runs its callback once a parent entry has declared that exact key, so an unknown key would
+      // silently never register. Every target therefore gets its own inject/effect pair, and the
+      // disposer the factory returns withdraws that one contribution when the plugin unloads.
+      // The badge goes to BOTH additive slots, each under its own id. A one-shot read-only preview
+      // replaces the whole composer, so `conversation.input.left` is not rendered there at all; the
+      // header entry is what keeps the badge visible in that view. Neither slot can displace the
+      // native model selector, permission control or submit action.
+      const registerView = (options, component) => {
+        try {
+          return ctx.slots.register(options, component);
+        } catch (error) { ctx.logger?.warn?.('preset-dispatch: 界面插槽不可用 ' + String(options.name) + '（' + String(error?.message ?? error) + '）'); return null; }
+      };
+      const chatViews = [
+        ['tool.call.toolview', {name:'tool.call.toolview',key:'preset_dispatch'}, DispatchCard, '派遣卡片'],
+        ['conversation.input.left', {name:'conversation.input.left',id:'preset-dispatch-child',order:12,label:() => t('badgeTitle')}, ChildBadge, '输入区徽标'],
+        ['conversation.session.header.actions', {name:'conversation.session.header.actions',id:'preset-dispatch-child',order:12,label:() => t('badgeTitle')}, ChildBadge, '会话标题徽标'],
+      ];
+      // Independent per surface: only the failing one warns, the other two still register.
+      for (const [slotName, options, component, label] of chatViews) {
+        ctx.effect(() => ctx.slots.inject(slotName, () => registerView(options, component)), 'preset-dispatch: ' + label);
+      }
     }};
   },
 });

@@ -7,6 +7,12 @@
 // (`defineDomain` throws "domain name ... must match"), which would leave history silently
 // in-memory. Verified against the real package by scripts/storage-contract-check.mjs.
 export const DOMAIN_NAME = 'preset_dispatch_history';
+// The storage domain version is NOT bumped for the dispatch-visibility fields.
+// A version bump would make the medium treat every existing record as belonging to
+// another version, and those records are exactly the history a user must keep reading.
+// The new fields are optional additions to the same document shape, so old and new rows
+// validate under one schema; a version change would only be honest if a field had
+// changed meaning or become required.
 export const DOMAIN_VERSION = 1;
 export const RUNS_TABLE = 'runs';
 
@@ -15,7 +21,7 @@ export const RUNS_TABLE = 'runs';
  * stored document is plain data with no surprises for the domain schema and no field
  * can appear later without being declared here deliberately.
  */
-export const RUN_FIELDS = ['id', 'preset', 'role', 'provider', 'model', 'depth', 'parentSession', 'reasoningEffort', 'modelSource', 'effortSource', 'presetVersion', 'policySnapshot', 'startedAt', 'finishedAt', 'status', 'childSessionId'];
+export const RUN_FIELDS = ['id', 'preset', 'role', 'provider', 'model', 'depth', 'parentSession', 'reasoningEffort', 'modelSource', 'effortSource', 'presetVersion', 'policySnapshot', 'startedAt', 'finishedAt', 'status', 'childSessionId', 'callId', 'rootCallId', 'catalogId', 'presetName', 'plannedRouting', 'observedRouting', 'observationState'];
 
 export const runRecord = row => Object.fromEntries(RUN_FIELDS.filter(key => row[key] !== undefined).map(key => [key, JSON.parse(JSON.stringify(row[key]))]));
 
@@ -23,6 +29,11 @@ export const runRecord = row => Object.fromEntries(RUN_FIELDS.filter(key => row[
  * Field → zod type factory, kept beside RUN_FIELDS on purpose: the durable schema and the
  * writer must describe the same fields, and a test asserts exactly that, so a field cannot
  * be written without being declared (or declared without ever being written).
+ *
+ * Every field added for the dispatch-visibility work is OPTIONAL and nullable, so a record
+ * written by an older version stays valid: `invalidRecords: 'backup-and-skip'` would move a
+ * row that fails this schema aside, which must never happen to a record this plugin itself
+ * wrote before the field existed.
  */
 export const RUN_FIELD_TYPES = {
   id: z => z.string(), preset: z => z.string(), startedAt: z => z.string(), status: z => z.string(),
@@ -32,6 +43,10 @@ export const RUN_FIELD_TYPES = {
   effortSource: z => z.string().optional(), presetVersion: z => z.number().nullable().optional(),
   policySnapshot: z => z.unknown().nullable().optional(), finishedAt: z => z.string().optional(),
   childSessionId: z => z.string().optional(),
+  callId: z => z.string().nullable().optional(), rootCallId: z => z.string().nullable().optional(),
+  catalogId: z => z.string().nullable().optional(), presetName: z => z.string().nullable().optional(),
+  plannedRouting: z => z.unknown().nullable().optional(), observedRouting: z => z.unknown().nullable().optional(),
+  observationState: z => z.string().nullable().optional(),
 };
 
 /** The record schema, built from the declared fields with the Host's own zod. */

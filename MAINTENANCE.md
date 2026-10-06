@@ -1,6 +1,6 @@
 # 维护说明（MAINTENANCE）
 
-> **面向维护者**：冻结哈希表（本仓库不是 git 仓库，它是唯一的变更记录）、门禁说明、入口与兼容文件生命周期、环境约束。
+> **面向维护者**：Git 记录变更历史；冻结哈希表标识验证候选。本文件还记录门禁、入口与兼容文件生命周期及环境约束。
 > 面向使用者的安装与使用说明请看 [README.md](README.md)。
 
 ---
@@ -44,10 +44,14 @@
 - 每预设派遣开关、默认模型、模型锁定、默认/允许思考档位和全局深度。
 - 页面可把模型加入 Host 授权池，但必须由用户显式确认，且界面说明扩权影响整个 Harness；取消某个预设的勾选只影响该预设，不会悄悄收回其他预设仍在使用的全局授权。
 - 显式、预设默认与继承三条路径的有效模型都经过同一授权校验，无法通过省略 provider/model 绕过限制；适配器负责最终档位验证。
-- `preset_list({})` 提供原生名单、策略、每个预设**实际可用**的 `usableModels`、因未授权而不可用的 `unavailableModels`，以及目录中存在的 `unauthorizedModels` 与 `catalogFailures`；目录不可用时仍返回预设元数据并给出说明。
-- `preset_dispatch({preset,task,provider?,model?,reasoning_effort?,run_in_background?})` 真正创建目标预设子代理。省略模型使用预设默认；无默认才继承父模型。显式 provider/model 必须成对。
-- 前台返回子会话、结果与 routing；后台返回 jobId，通过 job_output/job_kill 管理。
-- 本次运行只保存最近 50 条派遣元数据：有效路由/档位、选择来源、角色版本、状态、时间、子会话和策略快照。不保存任务、回答或推理。插件重载后记录清空，不承诺任务重启恢复。
+- `preset_list({})` 默认返回**精简目录**：仅可派遣且已加载的预设、共享的已授权模型池与派遣规则，并给出 `catalogId` 与目录标记（`marker`、`formatVersion`、`mode:'compact'`、`sessionBound`、`parentSessionId`、`authorizationTicket:false`）。`catalogId` 只用于把后续派遣与调用记录关联，**不是授权票据**；派遣时仍实时复核授权。显式 `diagnostic:true` 返回完整诊断（含 `hostPool`、`unauthorizedModels`、不可派遣预设与目录失败）。
+- `preset_dispatch({preset,task,provider?,model?,reasoning_effort?,run_in_background?,catalogId?})` 真正创建目标预设子代理。省略模型使用预设默认；无默认才继承父模型。显式 provider/model 必须成对；`catalogId` 可选，不参与授权判定。
+- 前台返回子会话、结果、`runId`、`presetVersion`、`observationState` 与 routing；后台返回 jobId 并明确 `childStarted:false`（作业提交不等于子代理已启动），通过 job_output/job_kill 管理。
+- 结果通过 `tool/result.meta` 写入**运行信封**（`marker:'preset-dispatch/run'`、`formatVersion:1`、runId、childSessionId、parentSessionId、callId、catalogId、observationState、observedRouting、status）。信封只供界面与资格判定使用，模型可见内容不变。
+- 派遣记录区分**计划路由**与**实际观测**：实际配置只来自子会话已提交的 `request/header`；未观测到时标「计划配置」，恢复的旧记录标「历史配置，未核实实际请求」，不推断提供方内部默认强度。记录只保存元数据，不含任务、回答、推理或凭证。
+- 记录写入持久化存储域 `preset_dispatch_history`（域版本保持 1，新增字段全部可选，旧记录仍可读）；内存保留最近 50 条用于列表。存储不可用时退回内存并报告原因，不影响派遣。
+- 只读可见性接口 `GET /api/preset-dispatch/visibility?callId=…|childSessionId=…&parentSession=…`（要求已认证操作者）以 SSE 推送记录快照；编号必须精确绑定，记录带父会话时必须声明同一父会话；载荷只含元数据。
+- 查询压缩 `compressUsedQueries` **默认关闭**：仅当开启、某次精简 `preset_list` 查询已被后续**已结算成功**的派遣证明使用、且目标节点仍是当前模型可见节点时，才按官方模式追加 `compaction/prune` 与单节点 `tool/result` 替换（只改 content）。工作结果、派遣结果与诊断目录永不压缩；失败只报告，不阻断回合。
 
 ## 权限与生命周期
 
@@ -60,33 +64,33 @@
 
 ## 冻结标识（本轮已验证候选）
 
-工作区不是 git 仓库，因此以 SHA-256 前缀记录候选（`Get-FileHash -Algorithm SHA256`，取前 16 位小写）。候选标识：v0.6.0（上一发布 v0.5.0）。升级、回退与逐条需求覆盖见 [升级与回退](<docs/05-upgrade-and-rollback.md>)。
+工作区已有 Git 历史（本轮工作树基于 `62a5b7ad89f608c5a9e7f7221780dbf3113883b3`），本表以 SHA-256 前缀（取前 16 位小写）标识**本轮验证候选**。候选标识：v0.6.0（上一发布 v0.5.0）。升级、回退与逐条需求覆盖见 [升级与回退](<docs/05-upgrade-and-rollback.md>)。
 
 | 文件 | 哈希前 16 位 |
 |---|---|
-| client.js | `67f52c34be58cd9e` |
+| client.js | `5273cfcbebc8501b` |
 | catalog.js | `baf1e3e948cd9df4` |
-| core.js | `f6fc7bfbb36eb9f1` |
-| host.js | `ff5e563b44273834` |
+| core.js | `2decd866879995ab` |
+| host.js | `08239ed1b78e4ed9` |
 | management-api.js | `2dded6212d2baedd` |
 | managed-presets.js | `fd92521797587a79` |
 | settings-api.js | `b83ec60974f4c93d` |
 | policy.js | `96c62b17f61c3538` |
-| history.js | `94ff2c559b5985ae` |
+| history.js | `80fefeacffe6c658` |
 | role-managed.js | `791d6571041b7574` |
 | roles.js | `7c8de0eb8e9a6760` |
-| routing.js | `333fa429e365a4d3` |
+| routing.js | `bf5e9d6b017cb3a2` |
 | entry.js | `0461133659dab58e` |
 | cordis.patch.yml | `2e8aed161f5f8015` |
-| package.json | `548575cd40b69c50` |
+| package.json | `eeb9ed0120b5c355` |
 | index.js | `c483a209fff9b985` |
 | scripts/check.mjs | `efcbf646ed5b1a96` |
 | test/package.test.js | `4f5335f036f9bb8c` |
 | generate-roles.mjs | `6a6b083df265effd` |
 | save-protocol.js | `5eb05fcd971f2dcc` |
 | scripts/test.mjs | `219a08de363ef2ed` |
-| history-store.js | `a0141f68b59ad5ae` |
-| test/history-store.test.js | `779df0632b601e9f` |
+| history-store.js | `c63791ddf9b32e5f` |
+| test/history-store.test.js | `2f1bc6198f90a904` |
 | catalog-cache.js | `71839cecefba433a` |
 | test/catalog-cache.test.js | `3b80f5a03d158889` |
 | migration-role-snapshot.json | `d27a2d85de8f09bc` |
@@ -100,9 +104,9 @@
 | settings-final.js | `b5c68ba25bd2e39d` |
 | test/agent-save.test.js | `98fbcfe06da3d7bb` |
 | test/catalog.test.js | `c62db506cb4a89ae` |
-| test/client-render.test.js | `4fc9610ca944e00e` |
-| test/core.test.js | `abf1d36819e6659b` |
-| test/history.test.js | `c5cf30df848fd5df` |
+| test/client-render.test.js | `b6d68d5fadf27080` |
+| test/core.test.js | `9b1e7939c3ada2ce` |
+| test/history.test.js | `2a0518e016359b4c` |
 | test/managed-presets.test.js | `b02883daad8d6d29` |
 | test/new-management-api.test.js | `500ee78f2b9ec67e` |
 | test/policy.test.js | `26343faf1035e1a2` |
@@ -112,6 +116,15 @@
 | scripts/live-probe.mjs | `a7560132dca76d72` |
 | scripts/storage-contract-check.mjs | `8251e2ce14ced99b` |
 | screenshots.json | `b2e501308e5bc7b8` |
+| dispatch-observation.js | `7308a4af133d064c` |
+| query-compaction-host.js | `4311b14fc6a387b8` |
+| query-compaction.js | `48890a5ec6a59a74` |
+| test/context-catalog.test.js | `7f7b324abcbf9dc5` |
+| test/dispatch-observation.test.js | `872e22e095b0ad13` |
+| test/query-compaction-host.test.js | `8ec0088a7db9643f` |
+| test/query-compaction.test.js | `f6207e11eec043b2` |
+| test/visibility-api.test.js | `dab7b6cbad86c16b` |
+| visibility-api.js | `59ea3dd69a495d10` |
 
 独立验证证据见 [验证](#验证) 一节；浏览器端视觉与真机点击仍需用户在本机确认。
 
@@ -161,7 +174,14 @@
 - `test/save-protocol.test.js`（9 项）：所有权规则（自有可授权，外部与遗留行只能降级为中性行）、只对变化行判定、写入前的池快照、修订号必填、`operationId` 重放与异负载拒绝、指纹区分重试。
 - `test/agent-save.test.js`（33 项）：用真实路由处理器驱动统一保存端点，且夹具**真实校验并递增修订号**（否则 CAS 断言没有意义）——预校验零写入、未授权模型被拒、确认扩权后按「池 → 策略」顺序写入、外部预设无法被授予权限、静态允许列表回退被拒、删除先停用再删除、删除失败后无可派遣残留、新建先中性化遗留行、新建可保存启用策略、定义与策略目标不一致被拒、修订号必填与过期拒绝、写入边界授权复核（收窄或读不到即零写入）、分项契约与待写分项、`operationId` 重放与查询、已退役端点不再注册。
 - `test/policy.test.js`：新增保存期上下文校验（池子集、默认模型范围、按模型能力校验档位），并确认撤销授权后**读取**旧配置不再报错（只有保存会被拒）。
-- `test/client-render.test.js`（20 项）：最小 React 钩子模拟器加载真实 client.js，覆盖——单页且不再调用退役端点；页面自带样式注入（含卡片网格规则，防止页面退化成裸 HTML）；卡片打开同时含两分区的唯一弹窗并载入已存提示词；目录中未授权模型照常列出并标记「需授权」；勾选未授权模型会阻止保存直到确认全局授权；自有预设保存同时提交定义+策略+已确认授权；**非本插件预设完全只读**（无按钮、无点击、不写入）；零写入报「未保存任何更改」且不再显示「部分已保存」；部分写入如实报告已落盘分项并保持基线修订号；恢复只提交未落盘分项并以刚读到的修订号围栏；冲突按**草稿基线**比较、显示服务器值 vs 草稿值、需按差异签名逐次确认；未完成草稿刷新后恢复（落盘内容**不含扩权确认**，主保存按钮仍锁定）；复制可命名而更新锁定 ID；200 但缺少分项契约视为结果未知；传输失败视为结果未知；重新读取成功后解除锁定；全局弹窗管理授权池/深度/失效策略清理；历史与新建入口；首次读取失败仍可重试且不会在缺失数据上打开编辑器。
+- `test/client-render.test.js`（36 项）：最小 React 钩子模拟器加载真实 client.js，覆盖——单页且不再调用退役端点；页面自带样式注入（含卡片网格规则，防止页面退化成裸 HTML）；卡片打开同时含两分区的唯一弹窗并载入已存提示词；目录中未授权模型照常列出并标记「需授权」；勾选未授权模型会阻止保存直到确认全局授权；自有预设保存同时提交定义+策略+已确认授权；**非本插件预设完全只读**（无按钮、无点击、不写入）；零写入报「未保存任何更改」且不再显示「部分已保存」；部分写入如实报告已落盘分项并保持基线修订号；恢复只提交未落盘分项并以刚读到的修订号围栏；冲突按**草稿基线**比较、显示服务器值 vs 草稿值、需按差异签名逐次确认；未完成草稿刷新后恢复（落盘内容**不含扩权确认**，主保存按钮仍锁定）；复制可命名而更新锁定 ID；200 但缺少分项契约视为结果未知；传输失败视为结果未知；重新读取成功后解除锁定；全局弹窗管理授权池/深度/失效策略清理；历史与新建入口；首次读取失败仍可重试且不会在缺失数据上打开编辑器；派遣卡片三阶段与真实观测帧；徽标仅对本插件子会话显示；身份快照冻结；预览头部徽标；V11 进入子会话与侧边栏入口（含服务缺失降级、未确认编号不显示入口、start 阶段以记录行状态为准）；插槽夹具只激活已声明插槽并释放返回的 disposer；卸载释放全部四个贡献且不再新增注册。
+
+- `test/context-catalog.test.js`（26 项）：默认精简目录、显式全量诊断、`catalogId` 会话绑定与不可当授权票据、目录失败隔离。
+- `test/dispatch-observation.test.js`（22 项）：计划与实际分离、适配器默认不猜测、高水位序号去重、变化基线永不清空（A→B→B→B 与 A→B→B→A）、继承前缀边界、投影初始化与视图稳定性。
+- `test/visibility-api.test.js`（27 项）：操作者认证、编号精确绑定、载荷不含任务/回答/凭证、pending 流忽略无关更新、已结算记录首帧后关闭、订阅与流在结束、失配、卸载时释放。
+- `test/query-compaction.test.js`（27 项）：资格门槛（含无结果关联阻塞）、官方替换对、失败与恢复、不重复扣减、不压缩工作结果。
+- `test/query-compaction-host.test.js`（15 项）：默认关闭、按会话对象一次性追赶折叠、`agent/pre-step` 原样返回 `next()`、异常不外抛、disposer 释放两个监听。
+- `test/history.test.js`（19 项）与 `test/history-store.test.js`（17 项）：字段白名单与内部行访问器、订阅广播、持久化往返与旧记录兼容。
 
 **该模拟器不等价于浏览器**：它无法建立布局、焦点、对比度或指针行为，因此不能作为视觉与交互验收证据。
 

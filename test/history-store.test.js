@@ -187,3 +187,85 @@ test('the port refuses to write before it is open', async () => {
   await assert.rejects(() => store.put(run()), /not open/);
   assert.deepEqual(await store.load().catch(error => String(error.message)), 'history storage is not open');
 });
+
+// ---------------------------------------------------------------------------------------------
+// Phase B: the durable whitelist and old-record compatibility (docs/08 V07/V10, docs/09 T05).
+// ---------------------------------------------------------------------------------------------
+
+/** Every declared visibility field, filled with a value of its declared type. */
+const fullRow = () => run({
+  role: 'implementer', provider: 'p', model: 'm', depth: 1, parentSession: 'parent-1', reasoningEffort: 'high',
+  modelSource: 'preset-default', effortSource: 'preset-default', presetVersion: 3,
+  policySnapshot: { enabled: true, allowedModels: [{ provider: 'p', model: 'm' }] },
+  finishedAt: '2026-01-01T00:01:00.000Z', childSessionId: 'child-1', callId: 'call-1',
+  rootCallId: 'root-1', catalogId: 'catalog-1', presetName: 'Minimal',
+  plannedRouting: { provider: 'p', model: 'm', reasoningEffort: 'high', modelSource: 'preset-default', effortSource: 'preset-default' },
+  observedRouting: { provider: 'p', model: 'm', reasoningEffort: 'high' },
+  observationState: 'observed',
+});
+
+test('every declared record field survives a write and a load, and none is silently dropped', async () => {
+  const facility = fakeFacility();
+  const store = createHistoryStore(helpers());
+  await store.open(facility);
+  await store.put(fullRow());
+
+  const [loaded] = await store.load();
+  const expected = runRecord(fullRow());
+  assert.deepEqual(Object.keys(loaded).sort(), [...RUN_FIELDS].sort(), 'exactly the declared fields must come back');
+  for (const field of RUN_FIELDS) assert.deepEqual(loaded[field], expected[field], `${field} did not survive the round trip`);
+  assert.equal(loaded.observationState, 'observed');
+  assert.deepEqual(loaded.plannedRouting, fullRow().plannedRouting, 'a nested route must come back intact');
+  assert.notEqual(loaded.plannedRouting, fullRow().plannedRouting, 'and must not alias caller state');
+});
+
+test('a payload key that is not declared is dropped rather than reaching the medium', () => {
+  const row = { ...fullRow(), task: 'secret task', answer: 'secret answer', reasoning: 'secret chain', apiKey: 'sk-live-1' };
+  const stored = runRecord(row);
+  for (const key of ['task', 'answer', 'reasoning', 'apiKey']) assert.equal(key in stored, false, `${key} must never be stored`);
+  assert.equal(/secret|sk-live/.test(JSON.stringify(stored)), false, 'no payload text may be stored');
+});
+
+test('a record written before the visibility fields existed stays valid and readable', async () => {
+  // The shape an older version wrote: the original plan metadata, no ids, no observation.
+  const legacy = { id: 'run-legacy', preset: 'researcher', role: 'researcher', provider: 'p', model: 'm', depth: 1, parentSession: 'parent-1', startedAt: '2025-12-01T00:00:00.000Z', status: 'completed' };
+  const facility = fakeFacility();
+  facility.records.set(legacy.id, legacy);
+  const store = createHistoryStore(helpers());
+  await store.open(facility);
+
+  const [loaded] = await store.load();
+  assert.equal(loaded.id, 'run-legacy', 'an old record must still be addressable');
+  assert.deepEqual(loaded, legacy, 'loading must not rewrite an old record into a new shape');
+  for (const field of ['observedRouting', 'observationState', 'callId', 'childSessionId', 'catalogId']) {
+    assert.equal(field in loaded, false, `an old record must not gain ${field}`);
+  }
+  // A record that predates the new fields keeps validating, so the medium does not move it aside.
+  assert.deepEqual(runRecord(loaded), legacy, 're-writing an old record must preserve exactly what it already had');
+});
+
+test('restoring an old record cannot invent an observed configuration for it', async () => {
+  const facility = fakeFacility();
+  facility.records.set('run-old', { id: 'run-old', preset: 'researcher', startedAt: '2025-12-01T00:00:00.000Z', status: 'running', model: 'm', modelSource: 'preset-default' });
+  const store = createHistoryStore(helpers());
+  await store.open(facility);
+  const history = createHistory(50, store);
+  assert.deepEqual(await history.restore(), { restored: 1, interrupted: 1 });
+
+  const [row] = history.list();
+  assert.equal(row.status, 'interrupted', 'an untraceable run must be corrected, not presented as running');
+  assert.equal('observedRouting' in row, false, 'restore must not supply an actual request the record never had');
+  assert.equal('observationState' in row, false);
+  assert.equal(row.modelSource, 'preset-default', 'the original plan metadata must survive the correction');
+});
+
+test('the declared field set and the durable schema agree after the visibility fields were added', () => {
+  // One assertion that closes the loop for the new fields specifically: each is declared in the
+  // writer and in the schema, so a field cannot be written into a document the schema rejects.
+  for (const field of ['callId', 'rootCallId', 'catalogId', 'presetName', 'plannedRouting', 'observedRouting', 'observationState', 'childSessionId']) {
+    assert.ok(RUN_FIELDS.includes(field), `${field} must be declared by the writer`);
+    assert.equal(typeof RUN_FIELD_TYPES[field], 'function', `${field} must have a declared durable type`);
+  }
+  assert.deepEqual(Object.keys(RUN_FIELD_TYPES).sort(), [...RUN_FIELDS].sort());
+  assert.equal(DOMAIN_VERSION, 1, 'adding optional fields must not bump the domain version, which would orphan every existing record');
+});

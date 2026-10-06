@@ -10,6 +10,9 @@ import { createCatalogCache } from './catalog-cache.js?stable';
 import { routingText } from './routing.js?stable';
 import { validatePolicies } from './policy.js?stable';
 import { registerSettingsApi } from './settings-api.js?stable';
+import { createRouteProjectionDefinition, observationWithEvents, routingView } from './dispatch-observation.js?stable';
+import { registerVisibilityApi } from './visibility-api.js?stable';
+import { registerQueryCompaction } from './query-compaction-host.js?stable';
 
 // Local bundles are linked to workspace realpaths. Resolve public runtime packages
 // from the actual Host entry, not from this workspace or a second npm installation.
@@ -18,6 +21,19 @@ if (!hostEntry) throw new Error('preset-dispatch requires a DSH Host entry scrip
 const hostRequire = createRequire(pathToFileURL(hostEntry));
 const load = spec => import(pathToFileURL(hostRequire.resolve(spec)).href);
 const { default: z } = await load('@deepseek-ai/schemastery');
+// The projection registry validates state through `stateSchema.parse`, which the Host's
+// schemastery validator does not expose. `zod` is already a dependency this plugin loads for the
+// durable history schema, so the projection is declared with the real validator instead of a
+// compatibility shim. Only an object that really offers zod's `object`/`any`/`array` is used; a
+// composition without it falls back to schemastery, whose callable schemas the definition accepts.
+const zodModule = await load('zod').catch(() => null);
+const zodOf = module => {
+  for (const candidate of [module?.z, module?.default, module]) {
+    if (candidate && typeof candidate.object === 'function' && typeof candidate.any === 'function' && typeof candidate.array === 'function') return candidate;
+  }
+  return null;
+};
+const zod = zodOf(zodModule);
 const { symbols } = await load('@deepseek-ai/cordis');
 const { brandString } = await load('@deepseek-ai/dsh-brand');
 const { createUserMessage } = await load('@deepseek-ai/dsh-llm');
@@ -30,6 +46,8 @@ export const Config = z.object({
   allowedPresets: z.array(z.string()).default(['standard', 'ptc', 'minimal', 'cordis']),
   maxDepth: z.number().default(1).volatile(),
   allowModelSelection: z.boolean().default(true),
+  // Phase C is wired but closed: the "already used query" compaction runs only when this is true.
+  compressUsedQueries: z.boolean().default(false),
   presetPolicies: z.array(z.object({
     preset: z.string(), enabled: z.boolean().default(false),
     defaultModel: z.any(),
@@ -99,16 +117,111 @@ export async function apply(ctx, config) {
     ctx.effect(() => () => historyStore.close().catch(() => {}), 'preset-dispatch history storage');
     await history.restore();
   }
+  /**
+   * Live observation of one dispatch, read from the dispatcher's own ticket.
+   *
+   * It is looked up by the child session id, never by a history row: `history.list()` hands out
+   * copies, and a copy is not the object the dispatcher is still updating.
+   */
+  const liveFor = row => (row?.childSessionId ? runtime?.observationOf?.(row.childSessionId) ?? null : null);
+  /** The live Session of a child, when it is still running. Used to verify parent/child. */
+  const sessions = id => {
+    try { return ctx.agents.get(id)?.session ?? null; } catch { return null; }
+  };
+  /**
+   * Fold one committed event of a dispatch child into its observation.
+   *
+   * This is the global backstop: the listener is registered with `global: true`
+   * because the child agent's context is not this plugin's context, so a plain
+   * scoped listener would never fire. It only ever touches a run this plugin
+   * created — an event from any other session, or from a child whose own header
+   * names a different parent than the record does, is ignored rather than stored.
+   *
+   * The child is identified through the ACTIVE TICKET, never by scanning
+   * `history.list()`: that list is bounded, so a long dispatch whose row has been
+   * pushed out of the newest fifty would stop being observed for good. The ticket
+   * carries the record it belongs to and the child session id it reserved.
+   */
+  const observeSessionEvent = (session, event) => {
+    if (!event || event.type !== 'request/header') return;
+    const childSessionId = session?.id;
+    if (typeof childSessionId !== 'string' || childSessionId === '') return;
+    const live = runtime?.observationOf?.(childSessionId) ?? null;
+    if (!live) return;
+    // The record is looked up in the STORE by its id, not taken from a `list()` snapshot: `list()`
+    // returns clones, and a correction applied to a clone is lost when the dispatch ends.
+    const recordId = live.record?.id ?? null;
+    const record = (typeof recordId === 'string' && typeof history.get === 'function' ? history.get(recordId) : null) ?? live.record ?? null;
+    if (!record) return;
+    // The parent/child relationship is checked, not assumed: a session that merely
+    // claims the same id as a recorded child is not treated as that child.
+    const statedParent = record.parentSession ?? null;
+    if (statedParent !== null && session?.header?.parentSession !== statedParent) return;
+    const observation = observationWithEvents(live.observation, [event]);
+    if (observation === live.observation) return;
+    // The record is the durable side of the same fact; the API reads both, so a
+    // restarted process that lost the in-memory ticket still shows what was seen.
+    // `adopt` hands the folded observation back to the LIVE ticket as well, so the
+    // finish path cannot later write the ticket's older, empty observation over it.
+    if (typeof live.adopt === 'function') live.adopt(observation);
+    else history.update(record, { observationState: observation.state, observedRouting: routingView(observation).observed });
+  };
+  if (typeof ctx.on === 'function') {
+    ctx.effect(() => {
+      const listener = (session, event) => observeSessionEvent(session, event);
+      let off;
+      try { off = ctx.on('session/event', listener, { global: true }); }
+      catch { off = null; }
+      return typeof off === 'function' ? off : () => {};
+    }, 'preset-dispatch observation feed');
+  }
   registerSettingsApi(ctx, config, management, catalogCache);
   registerManagementApi(ctx,management,history,() => storageNote ?? history.storageError());
+  // Phase C wiring: the compaction is closed unless `compressUsedQueries` is true, and the flag is
+  // read live at every pre-step boundary. The token meter is optional by construction — without it
+  // the boundary only reports and writes nothing — and the disposer releases both listeners.
+  ctx.effect(() => {
+    const enabled = () => config.compressUsedQueries.get() === true;
+    return registerQueryCompaction(ctx, { enabled, tokenMeter: ctx.get('tokenMeter') ?? null, logger: ctx.logger });
+  }, 'preset-dispatch query compaction');
   ctx.systemPrompt.section({ name:'preset-dispatch-routing', order:115, text:() => routingText(ctx.get('subagentModelSelection')?.current(), Object.fromEntries(management.owned().map(d=>[d.id,d])), liveConfig.presetPolicies) });
   ctx.settings.configure({ auto: false });
-  const runtime = createDispatcher(ctx, liveConfig, {
+  let runtime = null;
+  runtime = createDispatcher(ctx, liveConfig, {
     ...subagent,
     serviceIdentity: value => value[symbols.original] ?? value,
     randomUUID, brandString, createUserMessage, foldConsumedWork, SessionLogOffset,
     getManagedDefinition:management.get, withPresetLock:management.coordinate, history, catalog: catalogCache,
   });
+  /**
+   * The child's own session view. Registered through `ctx.inject` so a composition
+   * without the projection registry keeps working: the card and the badge fall back
+   * to the visibility API, which is the authoritative face either way.
+   */
+  if (typeof ctx.inject === 'function') {
+    try {
+      ctx.inject(['sessionProjections'], projectionCtx => {
+        const registry = projectionCtx.get('sessionProjections');
+        if (!registry || typeof registry.register !== 'function') return;
+        try { projectionCtx.effect(() => registry.register(createRouteProjectionDefinition(zod ?? z)), 'preset-dispatch route projection'); }
+        catch (error) { ctx.logger?.warn?.('preset-dispatch: 会话投影不可用（' + String(error?.message ?? error) + '）'); }
+      });
+    } catch { /* no projection registry in this composition */ }
+  }
+  // The visibility route is optional for the same reason the projection is: a
+  // composition without the web carrier must still be able to dispatch.
+  if (ctx.get('webServer')) {
+    // One lifetime per registration, aborted by the route's own disposer: a plugin unload closes
+    // every open stream even though the module has no other way to signal it.
+    const visibility = new AbortController();
+    ctx.effect(() => {
+      const dispose = registerVisibilityApi(ctx, { history, liveFor, sessions, lifetime: visibility, restored: history.restoredAt() !== null });
+      return () => {
+        visibility.abort();
+        if (typeof dispose === 'function') dispose();
+      };
+    }, 'preset-dispatch visibility');
+  }
   ctx.subagents.registerProvider(runtime.provider);
   ctx.tools.register(runtime.listTool);
   ctx.tools.register(runtime.dispatchTool);

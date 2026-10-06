@@ -147,6 +147,31 @@ test('list returns independent snapshots that cannot rewrite stored runs', () =>
   assert.equal(snapshot.length, 1, 'an earlier snapshot changed after a new run');
 });
 
+test('V08 get exposes the internal row for update while list and query return detached snapshots', () => {
+  const history = createHistory();
+  const begun = history.begin(metadata());
+  const internal = history.get(begun.id);
+  assert.equal(internal, begun, 'get returns the stored row, not a clone');
+  assert.equal(history.get(begun.id), internal, 'repeated lookup retains the internal row identity');
+  const listed = history.list()[0];
+  const queried = history.query({ preset: 'minimal' }).runs[0];
+  assert.notEqual(listed, internal, 'list must not expose the internal row');
+  assert.notEqual(queried, internal, 'query must not expose the internal row');
+  history.update(internal, { childSessionId: 'child-get', observedRouting: { provider: 'p', model: 'observed' } });
+  assert.equal(internal.childSessionId, 'child-get', 'the held internal reference sees update');
+  assert.equal(history.get(begun.id), internal, 'update must not replace the internal row reference');
+  assert.equal(history.list()[0].childSessionId, 'child-get', 'new list snapshots see the update');
+  assert.equal(history.query({ preset: 'minimal' }).runs[0].childSessionId, 'child-get', 'new query snapshots see the update');
+  assert.equal(listed.childSessionId, undefined, 'an earlier list snapshot remains unchanged');
+  assert.equal(queried.childSessionId, undefined, 'an earlier query snapshot remains unchanged');
+  const freshList = history.list()[0], freshQuery = history.query({ preset: 'minimal' }).runs[0];
+  assert.notEqual(freshList.observedRouting, internal.observedRouting, 'list nested data is detached');
+  assert.notEqual(freshQuery.observedRouting, internal.observedRouting, 'query nested data is detached');
+  freshList.observedRouting.model = 'tampered-list';
+  freshQuery.observedRouting.model = 'tampered-query';
+  assert.equal(internal.observedRouting.model, 'observed', 'snapshot mutations cannot write through');
+});
+
 test('separate histories do not share runs', () => {
   const a = createHistory(2);
   const b = createHistory(2);
@@ -155,4 +180,134 @@ test('separate histories do not share runs', () => {
   b.begin(metadata({ id: 'run-b' }));
   assert.deepEqual(a.list().map(r => r.id), ['run-a']);
   assert.deepEqual(b.list().map(r => r.id), ['run-b']);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Phase B: the metadata whitelist, the durable snapshot and the subscribe contract
+// (docs/08 V07/V08/V10, docs/09 T04/T05).
+// ---------------------------------------------------------------------------------------------
+
+test('V08 update applies only declared fields and reports exactly what it wrote', () => {
+  const history = createHistory();
+  const row = history.begin(metadata());
+  const applied = history.update(row, {
+    childSessionId: 'child-1',
+    callId: 'call-1',
+    rootCallId: 'root-1',
+    catalogId: 'catalog-1',
+    presetName: 'Minimal',
+    presetVersion: 3,
+    observationState: 'observed',
+    plannedRouting: { provider: 'p', model: 'm', reasoningEffort: 'high', modelSource: 'preset-default', effortSource: 'preset-default' },
+    observedRouting: { provider: 'p', model: 'm', reasoningEffort: 'high' },
+  });
+  assert.deepEqual(applied.sort(), ['callId', 'catalogId', 'childSessionId', 'observationState', 'observedRouting', 'plannedRouting', 'presetName', 'presetVersion', 'rootCallId'].sort());
+  assert.equal(row.childSessionId, 'child-1');
+  assert.equal(row.observedRouting.reasoningEffort, 'high');
+});
+
+test('V08 an undeclared field or a wrong-typed value is refused instead of being stored', () => {
+  const history = createHistory();
+  // A record with none of the visibility fields yet, so a refused write is unambiguous.
+  const row = history.begin(metadata({ childSessionId: undefined, callId: undefined, catalogId: undefined, presetVersion: undefined, plannedRouting: undefined, observedRouting: undefined, observationState: undefined }));
+  const before = { ...row };
+  const refused = {
+    task: 'secret task text', answer: 'secret answer', reasoning: 'secret chain',
+    prompt: 'secret prompt', output: 'secret output', messages: [{ role: 'user', content: 'secret' }],
+    // Declared names with values the record could not survive: an empty id, a float version,
+    // a string where a route object belongs.
+    childSessionId: '', callId: '', catalogId: '   ',
+    presetVersion: 2.5, plannedRouting: 'not-a-route', observedRouting: 'not-a-route',
+    observationState: 7, finishedAt: 0,
+  };
+  assert.deepEqual(history.update(row, refused), [], 'not one refused field may be reported as written');
+  assert.deepEqual(row, before, 'a refused patch must leave the record untouched');
+  assert.equal(/secret/.test(JSON.stringify(history.list())), false, 'no refused value may reach the record');
+  // An empty string is not an identifier: the record must not gain a key naming no child.
+  assert.equal('childSessionId' in history.list()[0], false);
+  assert.equal('presetVersion' in history.list()[0], false);
+});
+
+test('V10 an explicit null route and version are honest values, not missing ones', () => {
+  const history = createHistory();
+  const row = history.begin(metadata());
+  const applied = history.update(row, { observedRouting: null, presetVersion: null });
+  assert.deepEqual(applied.sort(), ['observedRouting', 'presetVersion']);
+  assert.equal(row.observedRouting, null, 'a cleared observation must be distinguishable from a never-written one');
+  assert.equal(row.presetVersion, null);
+  assert.equal(history.update(row, { presetVersion: undefined }).includes('presetVersion'), false, 'undefined is absence, not a value');
+});
+
+test('V08 update is a no-op that notifies nobody when it changes nothing', () => {
+  const history = createHistory();
+  const row = history.begin(metadata());
+  const seen = [];
+  history.subscribe((changed, kind) => seen.push(kind));
+  assert.deepEqual(history.update(row, {}), []);
+  assert.deepEqual(history.update(row, { task: 'x' }), []);
+  assert.deepEqual(seen, [], 'an empty patch must not announce an update that did not happen');
+});
+
+test('V07 the record is metadata only, and a stored row cannot be rewritten through an update patch', () => {
+  const history = createHistory();
+  const row = history.begin(metadata());
+  history.update(row, { id: 'hijacked', startedAt: '1999-01-01T00:00:00.000Z', status: 'completed', preset: 'other' });
+  const [stored] = history.list();
+  assert.notEqual(stored.id, 'hijacked', 'the record address must not be rewritable through an update patch');
+  assert.equal(stored.preset, 'minimal');
+  assert.equal(stored.status, 'running', 'only finish may settle a record');
+  assert.equal(/secret/.test(JSON.stringify(stored)), false);
+});
+
+test('V08 update writes a detached copy, so a later caller mutation cannot rewrite the record', () => {
+  const history = createHistory();
+  const row = history.begin(metadata());
+  const plan = { provider: 'p', model: 'm', reasoningEffort: 'high' };
+  history.update(row, { plannedRouting: plan });
+  plan.model = 'tampered';
+  assert.equal(history.list()[0].plannedRouting.model, 'm', 'the stored plan must not alias caller state');
+});
+
+test('V08 every record change announces its row and its kind, and the disposer stops it', () => {
+  const history = createHistory();
+  const seen = [];
+  const dispose = history.subscribe((changed, kind) => seen.push({ kind, id: changed?.id, status: changed?.status }));
+  const row = history.begin({ ...metadata(), id: 'run-1' });
+  history.update(row, { childSessionId: 'child-1' });
+  history.finish(row, 'completed', 'child-1');
+  assert.deepEqual(seen.map(entry => entry.kind), ['begin', 'update', 'finish']);
+  assert.deepEqual(seen.map(entry => entry.id), ['run-1', 'run-1', 'run-1']);
+  assert.equal(seen.at(-1).status, 'completed', 'the announced row must be the record as it now stands');
+
+  dispose();
+  history.begin(metadata({ id: 'run-2' }));
+  assert.equal(seen.length, 3, 'a disposed subscriber must stop hearing changes');
+});
+
+test('V08 a failing subscriber cannot break the write or the other subscribers', () => {
+  const history = createHistory();
+  const heard = [];
+  history.subscribe(() => { throw new Error('observer exploded'); });
+  history.subscribe((_row, kind) => heard.push(kind));
+  const row = history.begin(metadata());
+  history.finish(row, 'completed');
+  assert.equal(row.status, 'completed', 'the record must be written even when an observer fails');
+  assert.deepEqual(heard, ['begin', 'finish'], 'the healthy subscribers must still be told');
+  assert.equal(history.list().length, 1);
+});
+
+test('V10 restore keeps an old record readable and reports an untraceable run as interrupted', async () => {
+  // A row written before the visibility fields existed: no callId, no observation, no child.
+  const legacy = { id: 'run-old', preset: 'researcher', status: 'completed', startedAt: '2026-01-01T00:00:00.000Z', model: 'm', modelSource: 'preset-default' };
+  const rows = new Map([[legacy.id, legacy]]);
+  const store = { async load() { return [...rows.values()]; }, async put(row) { rows.set(row.id, row); }, async remove(id) { rows.delete(id); } };
+  const history = createHistory(50, store);
+  assert.deepEqual(await history.restore(), { restored: 1, interrupted: 0 });
+  const [restored] = history.list();
+  assert.equal(restored.id, 'run-old');
+  assert.equal(restored.status, 'completed', 'a finished legacy run must not be turned into another state');
+  assert.equal(restored.modelSource, 'preset-default');
+  assert.equal('observedRouting' in restored, false, 'restore must not invent an observed value the record never had');
+  assert.equal('observationState' in restored, false);
+  assert.notEqual(history.restoredAt(), null, 'a restored history must say when it was seeded');
 });
