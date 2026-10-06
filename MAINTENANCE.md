@@ -81,12 +81,12 @@
 | roles.js | `7c8de0eb8e9a6760` |
 | routing.js | `bf5e9d6b017cb3a2` |
 | entry.js | `0461133659dab58e` |
-| cordis.patch.yml | `2e8aed161f5f8015` |
+| cordis.patch.yml | `ef207082a38131a5` |
 | package.json | `eeb9ed0120b5c355` |
 | index.js | `c483a209fff9b985` |
 | scripts/check.mjs | `efcbf646ed5b1a96` |
 | test/package.test.js | `4f5335f036f9bb8c` |
-| generate-roles.mjs | `6a6b083df265effd` |
+| generate-roles.mjs | `64a08dc937176b15` |
 | save-protocol.js | `5eb05fcd971f2dcc` |
 | scripts/test.mjs | `219a08de363ef2ed` |
 | history-store.js | `c63791ddf9b32e5f` |
