@@ -8,16 +8,15 @@ const base = '/api/preset-dispatch';
 export const POOL_NAMESPACE = 'subagent-model-selection-settings';
 
 export function gate(req, method, connection) {
+  // Origin and browser-authentication trust belong to the official check: it knows the deployment's
+  // own origin, this plugin does not. The desktop app's renderer runs at `dsh-app://app`, so an
+  // http-only same-origin rule here refuses every state-changing request that app makes.
   if (!connection || connection.requestRejection(req) !== undefined) throw new Error('Authenticated operator request required');
   if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket?.remoteAddress)) throw new Error('Loopback access required');
   if (req.method !== method) throw new Error('Method not allowed');
   const hostname = new URL(`http://${req.headers.host}`).hostname;
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(hostname)) throw new Error('Invalid Host');
-  if (method === 'POST') {
-    if (req.headers['content-type']?.split(';')[0] !== 'application/json') throw new Error('JSON required');
-    const origin = req.headers.origin;
-    if (!origin || new URL(origin).host !== req.headers.host || !['http:', 'https:'].includes(new URL(origin).protocol)) throw new Error('Same-origin request required');
-  }
+  if (method === 'POST' && req.headers['content-type']?.split(';')[0] !== 'application/json') throw new Error('JSON required');
 }
 
 const routeOf = value => ({ provider: String(value?.provider ?? '').trim(), model: String(value?.model ?? '').trim() });

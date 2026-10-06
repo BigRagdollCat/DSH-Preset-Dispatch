@@ -74,7 +74,7 @@
 | host.js | `08239ed1b78e4ed9` |
 | management-api.js | `9b528c98db9aff05` |
 | managed-presets.js | `fd92521797587a79` |
-| settings-api.js | `b83ec60974f4c93d` |
+| settings-api.js | `4cfc98672fb25dc6` |
 | policy.js | `96c62b17f61c3538` |
 | history.js | `80fefeacffe6c658` |
 | role-managed.js | `791d6571041b7574` |
@@ -108,8 +108,8 @@
 | test/core.test.js | `9b1e7939c3ada2ce` |
 | test/history.test.js | `2a0518e016359b4c` |
 | test/managed-presets.test.js | `b02883daad8d6d29` |
-| test/new-management-api.test.js | `500ee78f2b9ec67e` |
-| test/policy.test.js | `26343faf1035e1a2` |
+| test/new-management-api.test.js | `5d84a9a4961e5569` |
+| test/policy.test.js | `1fd514787cc67d97` |
 | test/roles.test.js | `ba5a92745a5cb4a7` |
 | test/save-protocol.test.js | `33ab5fdea672d538` |
 | scripts/pack-check.mjs | `dfca174cb6c8b294` |

@@ -35,8 +35,11 @@ test('gate accepts a recognized loopback same-origin operator request', () => {
   assert.doesNotThrow(() => gate(acceptPost, 'POST', accepting()));
 });
 
-test('gate rejects a forged Origin, wrong method and non-loopback peer', () => {
-  assert.throws(() => gate(request({ method: 'POST', origin: 'http://evil.example' }), 'POST', accepting()), /Same-origin request required/);
+test('gate defers Origin trust to Connection, and still rejects a wrong method and non-loopback peer', () => {
+  // The deployment owns Origin trust: the desktop app's renderer runs at `dsh-app://app`, which an
+  // http-only same-origin rule here would refuse for every state-changing request.
+  assert.doesNotThrow(() => gate(request({ method: 'POST', origin: 'dsh-app://app' }), 'POST', accepting()));
+  assert.throws(() => gate(request({ method: 'POST', origin: 'dsh-app://app' }), 'POST', rejecting()), /Authenticated operator request required/);
   assert.throws(() => gate(request({ method: 'GET', origin: LOOPBACK.origin }), 'POST', accepting()), /Method not allowed/);
   assert.throws(() => gate(request({ remoteAddress: '10.0.0.9' }), 'GET', accepting()), /Loopback access required/);
 });

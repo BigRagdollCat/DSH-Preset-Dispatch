@@ -11,7 +11,12 @@ test('locked inheritance and invalid default disallowed',()=>{assert.throws(()=>
 test('duplicate preset and invalid efforts rejected',()=>{assert.throws(()=>validatePolicies([{preset:'x'},{preset:'x'}]),/duplicate/);assert.throws(()=>make({allowedEfforts:[1]}),/efforts/);});
 const request=patch=>({method:'POST',socket:{remoteAddress:'127.0.0.1'},headers:{host:'127.0.0.1:3080',origin:'http://127.0.0.1:3080','content-type':'application/json'},...patch});
 test('same origin loopback JSON accepted',()=>gate(request(),'POST',{requestRejection:()=>undefined}));
-test('cross site and no origin writes rejected',()=>{assert.throws(()=>gate(request({headers:{host:'127.0.0.1:3080',origin:'https://evil.test','content-type':'application/json'}}),'POST',{requestRejection:()=>undefined}),/origin/);assert.throws(()=>gate(request({headers:{host:'127.0.0.1:3080','content-type':'application/json'}}),'POST',{requestRejection:()=>undefined}),/origin/);});
+test('origin trust belongs to the deployment check, not a local http rule',()=>{const accepting={requestRejection:()=>undefined};
+  // The desktop app serves its renderer from `dsh-app://app`, and a write may also carry no Origin.
+  gate(request({headers:{host:'127.0.0.1:3080',origin:'dsh-app://app','content-type':'application/json'}}),'POST',accepting);
+  gate(request({headers:{host:'127.0.0.1:3080','content-type':'application/json'}}),'POST',accepting);
+  // A rejected origin arrives as the connection's own rejection, which the gate still refuses.
+  assert.throws(()=>gate(request({headers:{host:'127.0.0.1:3080',origin:'https://evil.test','content-type':'application/json'}}),'POST',{requestRejection:()=>({status:403})}),/Authenticated operator request required/);});
 test('non loopback and forged Host rejected',()=>{assert.throws(()=>gate(request({socket:{remoteAddress:'192.168.1.5'}}),'POST',{requestRejection:()=>undefined}),/Loopback/);assert.throws(()=>gate(request({headers:{host:'evil.test'}}),'POST',{requestRejection:()=>undefined}),/Host/);});
 // assertPolicyContext is the save-time gate that needs the live Host pool and model
 // capabilities; it is deliberately separate from validatePolicies so that loading an
