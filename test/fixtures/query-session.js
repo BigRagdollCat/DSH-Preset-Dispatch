@@ -28,7 +28,8 @@
 //    { version: 3, mode: 'one-shot' | 'continuable', provider: string, label? } (+ continuable extras)
 //    It belongs to the child log, so the parent log below never fabricates one.
 import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -460,9 +461,11 @@ export function fakeCanonicalSession(overrides = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Real host packages. Two roots are tried, because the plugin declares only a `dsh` peer
-// dependency: this fixture's own location, then the workspace package, and finally the `dsh`
-// package that actually contains the host packages (resolved through its own package.json).
+// Real host packages. The plugin declares only a `dsh` peer dependency, so no single install
+// layout can be assumed: a global install, a profile-local link, a checkout above this file, or a
+// desktop bundle (whose packages live inside an asar archive and are therefore unreachable from a
+// plain node process). Every `dsh` root that exists is tried through its own `package.json`, then
+// this fixture's own location and the package beside it.
 // ---------------------------------------------------------------------------------------------
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -478,20 +481,31 @@ function resolveHostPackage(name, subpath = '') {
 }
 
 /**
- * The installed host packages. They are nested under the installed `dsh` package, so resolution is
- * rooted at that package's own `package.json`: a declared subpath export is resolved through it
- * (the same tiny resolver node uses for that package) and a bare package through the default file.
+ * Candidate roots of the installed `dsh` package, which nests the host packages. The order is the
+ * environment's own statement of where it runs (the active profile, then the home profiles), then
+ * the node installation, then any checkout above this file. None of them is assumed to exist.
  */
-const DSH_GLOBAL = join(dirname(process.execPath), 'node_modules', '@deepseek-ai', 'dsh');
-const DSH_GLOBAL_FALLBACK = 'G:\\nodes\\node_glabal\\node_modules\\@deepseek-ai\\dsh';
-const dshRoot = existsSync(DSH_GLOBAL) ? DSH_GLOBAL : DSH_GLOBAL_FALLBACK;
-const requireFromDsh = createRequire(join(dshRoot, 'package.json'));
+function dshRoots() {
+  const roots = [];
+  const add = value => { if (typeof value === 'string' && value !== '' && !roots.includes(value)) roots.push(value); };
+  const suffix = ['node_modules', '@deepseek-ai', 'dsh'];
+  if (process.env.DSH_PROFILE_DIR) add(join(process.env.DSH_PROFILE_DIR, ...suffix));
+  const home = process.env.DSH_HOME ?? join(homedir(), '.dsh');
+  try { for (const name of readdirSync(join(home, 'profiles'))) add(join(home, 'profiles', name, ...suffix)); } catch { /* no profiles directory */ }
+  add(join(dirname(process.execPath), ...suffix));
+  let dir = here;
+  for (let depth = 0; depth < 6; depth += 1) { dir = dirname(dir); add(join(dir, ...suffix)); }
+  return roots;
+}
 
 /** Resolve one host package path, or report every attempted base so the caller can report it. */
 export function hostPackagePath(name, subpath = '') {
   const specifier = subpath === '' ? name : `${name}/${subpath}`;
   const tried = [];
-  try { return { path: requireFromDsh.resolve(specifier), tried, via: 'dsh-package' }; } catch (error) { tried.push(`dsh-package: ${error.code ?? error.name}`); }
+  for (const root of dshRoots()) {
+    if (!existsSync(join(root, 'package.json'))) { tried.push(`dsh-package(${root}): missing`); continue; }
+    try { return { path: createRequire(join(root, 'package.json')).resolve(specifier), tried, via: `dsh-package(${root})` }; } catch (error) { tried.push(`dsh-package(${root}): ${error.code ?? error.name}`); }
+  }
   const resolved = resolveHostPackage(name, subpath);
   return { path: resolved.path, tried: [...tried, ...resolved.tried], via: resolved.via };
 }

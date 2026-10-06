@@ -57,7 +57,7 @@
                 },
                 {
                   "id": "role-policy",
-                  "name": "./role-managed.js",
+                  "name": "@local/dsh-preset-dispatch/managed-role",
                   "config": {
                     "role": "planner",
                     "definition": {
@@ -132,7 +132,7 @@
                 },
                 {
                   "id": "role-policy",
-                  "name": "./role-managed.js",
+                  "name": "@local/dsh-preset-dispatch/managed-role",
                   "config": {
                     "role": "researcher",
                     "definition": {
@@ -199,7 +199,7 @@
                 },
                 {
                   "id": "role-policy",
-                  "name": "./role-managed.js",
+                  "name": "@local/dsh-preset-dispatch/managed-role",
                   "config": {
                     "role": "planner",
                     "definition": {
@@ -266,7 +266,7 @@
                 },
                 {
                   "id": "role-policy",
-                  "name": "./role-managed.js",
+                  "name": "@local/dsh-preset-dispatch/managed-role",
                   "config": {
                     "role": "planner",
                     "definition": {
@@ -341,7 +341,7 @@
                 },
                 {
                   "id": "role-policy",
-                  "name": "./role-managed.js",
+                  "name": "@local/dsh-preset-dispatch/managed-role",
                   "config": {
                     "role": "implementer",
                     "definition": {
@@ -408,7 +408,7 @@
                 },
                 {
                   "id": "role-policy",
-                  "name": "./role-managed.js",
+                  "name": "@local/dsh-preset-dispatch/managed-role",
                   "config": {
                     "role": "test-author",
                     "definition": {
@@ -483,7 +483,7 @@
                 },
                 {
                   "id": "role-policy",
-                  "name": "./role-managed.js",
+                  "name": "@local/dsh-preset-dispatch/managed-role",
                   "config": {
                     "role": "verifier",
                     "definition": {

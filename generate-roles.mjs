@@ -20,7 +20,7 @@ if (!process.argv.includes('--force')) {
 const definitions = initialDefinitions();
 const snapshot = JSON.parse(await readFile(new URL('./migration-snapshot.json', import.meta.url), 'utf8'));
 const rows = [
-  { id: GROUP_ID, name: 'cordis:group', group: true, config: definitions.map(d => definitionRow(d, './role-managed.js')) },
+  { id: GROUP_ID, name: 'cordis:group', group: true, config: definitions.map(d => definitionRow(d, '@local/dsh-preset-dispatch/managed-role')) },
   { id: 'local-preset-dispatch', name: './entry.js', config: { allowedPresets: [], maxDepth: snapshot.config.maxDepth, allowModelSelection: true, presetPolicies: snapshot.config.presetPolicies } },
 ];
 await writeFile(new URL('./cordis.patch.yml', import.meta.url), JSON.stringify([{ insert: rows }], null, 2) + '\n');

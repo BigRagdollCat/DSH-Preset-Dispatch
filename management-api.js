@@ -7,7 +7,7 @@ export function managementOperations(ctx) {
     if (!entry) throw new Error('Managed preset group unavailable');
     return entry;
   };
-  const roleEntry = new URL('./role-managed.js', import.meta.url).href;
+  const roleEntry = '@local/dsh-preset-dispatch/managed-role';
   let tail = Promise.resolve();
   const coordinate = fn => { const task = tail.then(fn); tail = task.catch(() => {}); return task; };
   const owned = () => definitionsFrom(group().options.config);

@@ -72,7 +72,7 @@
 | catalog.js | `baf1e3e948cd9df4` |
 | core.js | `2decd866879995ab` |
 | host.js | `08239ed1b78e4ed9` |
-| management-api.js | `2dded6212d2baedd` |
+| management-api.js | `9b528c98db9aff05` |
 | managed-presets.js | `fd92521797587a79` |
 | settings-api.js | `b83ec60974f4c93d` |
 | policy.js | `96c62b17f61c3538` |
@@ -81,12 +81,12 @@
 | roles.js | `7c8de0eb8e9a6760` |
 | routing.js | `bf5e9d6b017cb3a2` |
 | entry.js | `0461133659dab58e` |
-| cordis.patch.yml | `ef207082a38131a5` |
-| package.json | `eeb9ed0120b5c355` |
+| cordis.patch.yml | `ed455e979b499f9d` |
+| package.json | `3ee84e2e0c893149` |
 | index.js | `c483a209fff9b985` |
 | scripts/check.mjs | `efcbf646ed5b1a96` |
-| test/package.test.js | `4f5335f036f9bb8c` |
-| generate-roles.mjs | `64a08dc937176b15` |
+| test/package.test.js | `c3eefe021b34e9fc` |
+| generate-roles.mjs | `54e5b618349c8ae6` |
 | save-protocol.js | `5eb05fcd971f2dcc` |
 | scripts/test.mjs | `219a08de363ef2ed` |
 | history-store.js | `c63791ddf9b32e5f` |
@@ -122,7 +122,7 @@
 | test/context-catalog.test.js | `7f7b324abcbf9dc5` |
 | test/dispatch-observation.test.js | `872e22e095b0ad13` |
 | test/query-compaction-host.test.js | `8ec0088a7db9643f` |
-| test/query-compaction.test.js | `f6207e11eec043b2` |
+| test/query-compaction.test.js | `a9287a3865ea0ead` |
 | test/visibility-api.test.js | `dab7b6cbad86c16b` |
 | visibility-api.js | `59ea3dd69a495d10` |
 

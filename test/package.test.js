@@ -32,6 +32,16 @@ test('the bundle patch points at the stable Host entry that exists', () => {
   const host = JSON.parse(patch)[0].insert.find(row => row.id === 'local-preset-dispatch');
   assert.equal(host.name, './entry.js', 'the bundle must load the stable entry');
   assert.ok(existsSync(fileURLToPath(new URL('entry.js', root))), './entry.js must exist');
+  const managedRole = '@local/dsh-preset-dispatch/managed-role';
+  const roles = JSON.parse(patch)[0].insert.find(row => row.id === 'agent-managed-presets').config;
+  assert.equal(roles.length, 7);
+  for (const row of roles) {
+    assert.equal(row.config.plugins.find(plugin => plugin.id === 'role-policy')?.name, managedRole,
+      `${row.config.id} must use the package-exported role module`);
+  }
+  assert.equal(manifest.exports['./managed-role'], './role-managed.js');
+  assert.ok(existsSync(fileURLToPath(new URL(manifest.exports['./managed-role'], root))));
+  assert.match(readFileSync(new URL('management-api.js', root), 'utf8'), /const roleEntry = '@local\/dsh-preset-dispatch\/managed-role'/);
 });
 
 test('the Host module graph uses one constant cache-busting query', () => {
@@ -75,4 +85,6 @@ test('the bootstrap generator refuses to run without --force', () => {
   const source = readFileSync(new URL('generate-roles.mjs', root), 'utf8');
   assert.match(source, /--force/, 'the generator must require an explicit opt-in');
   assert.match(source, /name: '\.\/entry\.js'/, 'the generator must emit the stable entry name');
+  assert.match(source, /definitionRow\(d, '@local\/dsh-preset-dispatch\/managed-role'\)/,
+    'the generator must retain the resolvable managed-role module');
 });
