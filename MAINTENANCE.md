@@ -79,7 +79,7 @@
 | history.js | `80fefeacffe6c658` |
 | role-managed.js | `791d6571041b7574` |
 | roles.js | `7c8de0eb8e9a6760` |
-| routing.js | `bf5e9d6b017cb3a2` |
+| routing.js | `a5dcfe8ca100c1dc` |
 | entry.js | `0461133659dab58e` |
 | cordis.patch.yml | `ed455e979b499f9d` |
 | package.json | `3ee84e2e0c893149` |

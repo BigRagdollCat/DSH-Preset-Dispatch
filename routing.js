@@ -9,5 +9,5 @@ export function routingText(selection) {
   const modelBoundary = selection?.enabled === true
     ? ''
     : '\n当前 Host 未启用子代理模型选择授权：派遣只能继承父代理模型。';
-  return `需要分工时，先调用 preset_list 查询可派遣角色及规则，再使用 preset_dispatch。主代理负责最终验收，不得绕过授权或拒绝。${modelBoundary}`;
+  return `多步骤、可并行或需要独立验证的工作，先调用 preset_list 查询可派遣角色及规则，再用 preset_dispatch 派遣子代理，不要等用户提醒。主代理负责最终验收，不得绕过授权或拒绝。${modelBoundary}`;
 }
