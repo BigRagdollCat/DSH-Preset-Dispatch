@@ -1050,9 +1050,12 @@ test('V11 recorded child metadata exposes both navigation actions through ctx.ge
   assert.deepEqual(navigation.sessions, [childSessionId], 'entry calls uiWorkspace.openSession with the recorded id');
   assert.equal(navigation.resources.length, 0, 'entering the child must not also open a sidebar pane');
   await sidebar.props.onClick();
-  assert.deepEqual(navigation.resources, [{ resource: 'dsh-resource://subagentchat/session/' + childSessionId, options: { kind: 'subagentchat', preferNewPane: true } }], 'sidebar entry uses the official resource URI and pane options');
+  assert.deepEqual(navigation.resources, [{ resource: 'dsh-resource://subagentchat/session/' + childSessionId + '?parent=' + PARENT_SESSION + '&mode=one-shot', options: { kind: 'subagentchat', preferNewPane: true } }], 'sidebar entry uses the official resource URI and pane options');
   assert.deepEqual(navigation.sessions, [childSessionId], 'sidebar entry must not switch the current session');
   assert.ok(['uiWorkspace', 'sidebarRight'].every(name => navigation.lookups.includes(name)), 'navigation services are obtained through ctx.get');
+  const orphan = await renderWith(Card, emu, hostProps({ parentSession: undefined, phase: 'result', block: runBlock({ meta: { child: { sessionId: childSessionId, started: true } } }) }));
+  assert.ok(byText(orphan, '进入子会话'), 'entering the child needs no parent address');
+  assert.ok(!byText(orphan, '在侧边栏打开'), 'the sidebar entry is withheld when the parent session its official address requires is unknown');
 });
 
 test('V11 a visibility frame confirms the child id when no child metadata was recorded', async () => {
@@ -1073,7 +1076,7 @@ test('V11 a visibility frame confirms the child id when no child metadata was re
   assert.deepEqual(navigation.sessions, [childSessionId], 'entry uses the child id from the frame, not a call id or label');
   assert.equal(navigation.resources.length, 0, 'session entry must not open a resource pane');
   await sidebar.props.onClick();
-  assert.deepEqual(navigation.resources, [{ resource: 'dsh-resource://subagentchat/session/' + childSessionId, options: { kind: 'subagentchat', preferNewPane: true } }]);
+  assert.deepEqual(navigation.resources, [{ resource: 'dsh-resource://subagentchat/session/' + childSessionId + '?parent=' + PARENT_SESSION + '&mode=one-shot', options: { kind: 'subagentchat', preferNewPane: true } }]);
   assert.deepEqual(navigation.sessions, [childSessionId], 'opening the resource leaves the current session unchanged');
   assert.ok(['uiWorkspace', 'sidebarRight'].every(name => navigation.lookups.includes(name)), 'frame navigation also reads services through ctx.get');
 });
@@ -1141,7 +1144,7 @@ for (const observationStatus of ['pending', 'missing', 'created', 'observed', 'f
         await enter.props.onClick();
         await sidebar.props.onClick();
         assert.deepEqual(navigation.sessions, [childSessionId]);
-        assert.deepEqual(navigation.resources, [{ resource: 'dsh-resource://subagentchat/session/' + childSessionId, options: { kind: 'subagentchat', preferNewPane: true } }]);
+        assert.deepEqual(navigation.resources, [{ resource: 'dsh-resource://subagentchat/session/' + childSessionId + '?parent=' + PARENT_SESSION + '&mode=one-shot', options: { kind: 'subagentchat', preferNewPane: true } }]);
       }
     } finally { emu.unmount(); }
   });

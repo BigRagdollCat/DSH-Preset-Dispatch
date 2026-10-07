@@ -854,8 +854,14 @@ window.__ModuleLoader__.load({
        * Both services are looked up during render (never from a stored reference), and rendering
        * itself navigates nowhere: each button only calls its own service when it is clicked. When a
        * service is missing only that button is hidden, so the other entry point stays usable.
+       *
+       * The Sidebar entry speaks the official `ui-subagent` address grammar
+       * `dsh-resource://subagentchat/session/<child>?parent=<parent>&mode=<mode>`: that parser
+       * refuses an address without both query parameters, so a bare session id would silently open
+       * nothing. A dispatch's child is a task subagent, which is one-shot; without a known parent
+       * session the address cannot be formed, so that entry is not offered.
        */
-      const childNavActions = childSessionId => {
+      const childNavActions = (childSessionId, parentSessionId) => {
         if (!childSessionId) return null;
         const workspace = navService('uiWorkspace');
         const sidebar = navService('sidebarRight');
@@ -863,9 +869,11 @@ window.__ModuleLoader__.load({
         if (workspace && typeof workspace.openSession === 'function') {
           buttons.push(h('button',{type:'button',className:'pdv-btn',key:'enter-child',onClick:() => workspace.openSession(childSessionId)},'进入子会话'));
         }
-        if (sidebar && typeof sidebar.openResource === 'function') {
+        if (sidebar && typeof sidebar.openResource === 'function' && parentSessionId) {
+          const address = 'dsh-resource://subagentchat/session/' + encodeURIComponent(childSessionId)
+            + '?parent=' + encodeURIComponent(parentSessionId) + '&mode=one-shot';
           buttons.push(h('button',{type:'button',className:'pdv-btn',key:'open-sidebar',
-            onClick:() => sidebar.openResource('dsh-resource://subagentchat/session/' + childSessionId, { kind: 'subagentchat', preferNewPane: true })},'在侧边栏打开'));
+            onClick:() => sidebar.openResource(address, { kind: 'subagentchat', preferNewPane: true })},'在侧边栏打开'));
         }
         return buttons.length ? h('div',{className:'pdv-actions',key:'child-nav'},...buttons) : null;
       };
@@ -971,7 +979,7 @@ window.__ModuleLoader__.load({
         // Navigation is offered from the start phase on, but only once a child session is really
         // confirmed: the preparing phase has no dispatch at all, and an unconfirmed child has no
         // session to enter.
-        if (phase !== 'preparing') body.push(childNavActions(confirmedChildSession(meta,row)));
+        if (phase !== 'preparing') body.push(childNavActions(confirmedChildSession(meta,row), ids.parentSession));
         return h('div',{className:'pdv-card'},h('style',null,viewCss),...body);
       }
 

@@ -68,7 +68,7 @@
 
 | 文件 | 哈希前 16 位 |
 |---|---|
-| client.js | `5273cfcbebc8501b` |
+| client.js | `dfafb95ca1b03595` |
 | catalog.js | `baf1e3e948cd9df4` |
 | core.js | `2decd866879995ab` |
 | host.js | `08239ed1b78e4ed9` |
@@ -104,7 +104,7 @@
 | settings-final.js | `b5c68ba25bd2e39d` |
 | test/agent-save.test.js | `98fbcfe06da3d7bb` |
 | test/catalog.test.js | `c62db506cb4a89ae` |
-| test/client-render.test.js | `b6d68d5fadf27080` |
+| test/client-render.test.js | `898de67d05d59038` |
 | test/core.test.js | `9b1e7939c3ada2ce` |
 | test/history.test.js | `2a0518e016359b4c` |
 | test/managed-presets.test.js | `b02883daad8d6d29` |
