@@ -52,6 +52,7 @@
 | 派遣期间撤权后，已发起的子代理仍会启动 | **启动前复核**：创建子代理前再次校验授权，撤权即拒绝并释放已创建的子代理 |
 | 派遣历史只在内存里，重启即丢 | **持久化元数据**（最近 50 条），重启后仍在；中断的派遣标记为已中断 |
 | 模型目录每次读取都要问提供方 | **目录缓存**（含并发合并与故障保留），但**授权永不走缓存** |
+| 派遣时凭感觉挑模型与强度，事后无法核对 | **轻量分级**：主代理按复杂度自报低/中/高，可选写入选模理由；子会话已提交回复的 Token 用量随记录汇总，没有可核实的用量就写未知 |
 
 ## 功能总览
 
@@ -88,7 +89,7 @@
 ### 4. 子代理派遣（工具面）
 
 - `preset_list`：默认返回**精简目录**（可派遣预设、共享模型池与档位、派遣规则、`catalogId` 与目录标记、`omittedPresets`）；`diagnostic: true` 返回完整诊断（`hostPool`、`unauthorizedModels`、不可派遣预设、目录失败）。`catalogId` 只用于关联记录，不是授权票据。
-- `preset_dispatch`：按预设创建子代理；省略模型使用预设默认，无默认才继承父模型；显式 provider/model 必须成对；支持 `reasoning_effort`、`run_in_background`、可选 `catalogId`。
+- `preset_dispatch`：按预设创建子代理；省略模型使用预设默认，无默认才继承父模型；显式 provider/model 必须成对；支持 `reasoning_effort`、`run_in_background`、可选 `catalogId` 与可选 `selection`。
 - 轻量选模：常驻提示仅提醒分级；`preset_list` 按需返回低/中/高规则与能力、授权、成本证据边界。可选 `selection: { difficulty, reason }` 记录主代理自报分级和 1–160 字符的简短理由，不参与授权、不自动改变模型或重试。详见 [轻量选模说明](<docs/11-lightweight-model-selection.md>)。
 - 前台返回结果、routing、`runId`、`presetVersion`、`observationState`；后台返回 jobId 且明确 `childStarted:false`，用 `job_output`/`job_kill` 管理。
 - 权限边界：叶子禁止再派遣；深度取双方较严上限；审批固定 never；不继承一次性授权；拒绝替换安全服务；创建前后各复核一次授权。
@@ -99,7 +100,7 @@
 - 区分**计划配置**与**实际请求**：实际值只来自子会话已提交的 `request/header`；未观测到标「计划配置，尚未观察到实际请求」，恢复的旧记录标「历史配置，未核实实际请求」，不推断提供方默认强度。
 - 子会话配置徽标：可继续对话的子代理位于输入区左下角；一次性只读子会话新增独立的输入区上方底部条，头部仍保留入口。摘要明确显示「Agent 预设 · 模型 · 思考强度」；展开可看计划/实际、预设快照与子会话编号。即使不是本插件派遣，只要是子会话也可读取其自身已提交请求的投影；无实际请求则标「未核实」，不把预设默认值冒充调用值。
 - 卡片提供「进入子会话」与「在侧边栏打开」（官方 `uiWorkspace.openSession` / `sidebarRight.openResource`）；编号未确认或服务不可用时不显示入口。
-- 运行信封写入 `tool/result.meta`：`marker`、`formatVersion`、`runId`、`childSessionId`、`parentSessionId`、`callId`、`catalogId`、`observationState`、`observedRouting`、`status`。
+- 运行信封写入 `tool/result.meta`：`marker`、`formatVersion`、`runId`、`childSessionId`、`parentSessionId`、`callId`、`catalogId`、`observationState`、`observedRouting`、`status`，以及本次派遣的 `selection` 与 `tokenUsage`；另有 `kind`、`preset`/`presetName`/`presetVersion` 与 `run`/`call`/`child`/`plan`/`observation` 分组字段。
 - 只读可见性接口 `GET /api/preset-dispatch/visibility`（SSE）：要求已认证操作者，父子与调用编号精确绑定，载荷只含元数据；结束、失配、断开、卸载都会释放。
 
 ### 6. 上下文精简与查询压缩
@@ -197,12 +198,13 @@ dsh plugin allow-version
 
 | 数据 | 位置 | 内容 |
 |---|---|---|
-| 插件设置 | 设置命名空间 `local-preset-dispatch` | 派遣深度、允许的预设、每个预设的派遣策略 |
+| 插件设置 | 设置命名空间 `local-preset-dispatch` | 最大派遣深度与每个预设的派遣策略（由设置页写入） |
+| 插件配置 | profile patch 中本插件的 `config` | `allowedPresets`、`allowModelSelection`、`compressUsedQueries`，以及 `maxDepth` 与 `presetPolicies` 的初始值 |
 | 受管预设 | profile patch 的 `agent-managed-presets` 组 | 角色定义与原生 `order` |
-| 派遣历史 | 存储域 `preset_dispatch_history`（v1） | 最近 50 条**元数据**：角色、提供方、模型、强度、时间、状态、策略快照、子会话 ID、调用与父会话关联、计划与实际配置、观测状态 |
-| 运行信封 | 每次 `preset_dispatch` 的 `tool/result.meta` | 仅关联与配置元数据：`marker`、`runId`、`childSessionId`、`parentSessionId`、`callId`、`catalogId`、`observationState`、`observedRouting`、`status`；不含任务与回答 |
+| 派遣历史 | 存储域 `preset_dispatch_history`（v1） | 最近 50 条**元数据**：角色、提供方、模型、强度、时间、状态、策略快照、子会话 ID、调用与父会话关联、计划与实际配置、观测状态，以及可选的 `selection` 分级/短理由与 `tokenUsage` 用量汇总 |
+| 运行信封 | 每次 `preset_dispatch` 的 `tool/result.meta` | 仅关联与配置元数据：`marker`、`runId`、`childSessionId`、`parentSessionId`、`callId`、`catalogId`、`observationState`、`observedRouting`、`status`、`selection`、`tokenUsage`；不含任务与回答 |
 
-**派遣历史不保存任务内容、回答或推理文本**；无法通过 schema 校验的历史记录会被介质移开备份（`backup-and-skip`），而不是让整份历史不可读。
+**派遣历史不保存任务内容、回答或推理文本**；`selection.reason` 是唯一会落盘的自由文本，长度上限 160 字符，调用者不得在其中写入秘密、任务原文或推理过程。无法通过 schema 校验的历史记录会被介质移开备份（`backup-and-skip`），而不是让整份历史不可读。
 
 清理：删除对应存储域目录即可清空历史；历史是派生数据，删除不影响预设与策略。
 
@@ -225,6 +227,9 @@ dsh plugin allow-version
 
 **「调用记录」是空的？**
 三种可能：还没派遣过；历史存储域未挂载（弹窗会显示原因）；或记录超过 50 条被淘汰。历史只保留元数据，重启后仍在。
+
+**「调用记录」里的分级和 Token 用量是什么？**
+分级（低/中/高）是主代理派遣时自报的任务复杂度，连同不超过 160 字符的选模理由一起写入记录，只用于事后核对：不参与授权，也不会自动改变模型或触发重试。用量只汇总子会话自己已提交回复里的计数，重复事件去重；缺失字段写未知，存在未计量尝试时标「部分统计」，不推算费用，也不含主代理的调度开销。两者都不代表任务质量验收通过。
 
 **升级插件后界面没变？**
 Host 改动需要重启 `dsh web`；仅客户端改动刷新页面即可。可用 `node scripts/live-probe.mjs` 判断运行实例是否已加载新代码。
@@ -258,9 +263,10 @@ node scripts/live-probe.mjs             # 运行实例是否已加载本版本�
 供开发者参考（不影响普通使用）：
 
 - **设置页**：`Agent 管理`（客户端由本插件的 `client.js` 提供）
-- **工具**：`preset_list`（默认精简目录，`diagnostic: true` 返回全量诊断）与 `preset_dispatch`（按预设派遣，支持显式提供方/模型/强度、后台运行、可选 `catalogId`）
+- **工具**：`preset_list`（默认精简目录，`diagnostic: true` 返回全量诊断）与 `preset_dispatch`（按预设派遣，支持显式提供方/模型/强度、后台运行、可选 `catalogId` 与可选 `selection`）
 - **客户端插槽**：`tool.call.toolview` 的 `preset_dispatch`（派遣卡片）；`conversation.input.left`、`conversation.input.dock` 与 `conversation.session.header.actions` 的 `preset-dispatch-child`（子会话配置徽标；底部 dock 仅用于一次性只读子会话）
 - **HTTP 路由**：`/api/preset-dispatch/*`（`state`、`catalog/refresh`、`operation`、`agent-save`、`presets`、`history`、`history/query`、`visibility`），仅接受已认证操作者请求
 - **存储域**：`preset_dispatch_history` v1（`layout:'per-record'`，坏记录 `backup-and-skip`）
 - **Host 入口**：稳定入口 `entry.js`；预设行由本插件自己的 `role-managed.js` 承载
+- **插件配置**：`allowedPresets`（仅对没有策略行的预设生效，默认 `['standard', 'ptc', 'minimal', 'cordis']`）、`maxDepth`（默认 1）、`allowModelSelection`（插件侧显式选模总开关，默认 `true`）、`compressUsedQueries`（查询压缩，默认 `false`）、`presetPolicies`（由设置页写入）
 - **新增模块**：`dispatch-reporting.js`（有界选模记录与已报告 Token 汇总）、`dispatch-observation.js`（计划/实际观测与会话投影）、`visibility-api.js`（可见性 SSE）、`query-compaction.js` 与 `query-compaction-host.js`（查询压缩，默认关闭）
