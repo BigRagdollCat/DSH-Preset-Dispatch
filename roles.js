@@ -35,7 +35,11 @@ export function roleDenial(id, exec) {
     }
     const relative = path.relative(cwd, target).replaceAll('\\','/');
     if (relative.startsWith('../') || path.isAbsolute(relative)) return '测试写入必须位于当前工作区。';
-    if (!/(?:^|\/)(?:test|tests|__tests__|fixtures|__fixtures__)(?:\/|$)|\.(?:test|spec)\.[^/]+$/i.test(relative) || /(?:^|\/)(?:package(?:-lock)?\.json|(?:npm|pnpm|yarn|bun).*lock[^/]*|\.(?:npmrc|yarnrc)[^/]*|[^/]*(?:config|workspace)\.[^/]+)$/i.test(relative)) return '测试编写预设仅能修改测试与夹具路径，不能修改运行器/配置。';
+    // Go 测试与生产文件同目录；PowerShell 仅补 scripts/test-*.ps1，不放开普通脚本或运行器。
+    const isTestPath = /(?:^|\/)(?:test|tests|__tests__|fixtures|__fixtures__)(?:\/|$)|\.(?:test|spec)\.[^/]+$/i.test(relative)
+      || /(?:^|\/)[^/]+_test\.go$/i.test(relative)
+      || /^scripts\/test-[^/]+\.ps1$/i.test(relative);
+    if (!isTestPath || /(?:^|\/)(?:package(?:-lock)?\.json|(?:npm|pnpm|yarn|bun).*lock[^/]*|\.(?:npmrc|yarnrc)[^/]*|[^/]*(?:config|workspace)\.[^/]+)$/i.test(relative)) return '测试编写预设仅能修改测试与夹具路径，不能修改运行器/配置。';
   }
 }
 export const commonPrompt = '你是职责明确的叶子代理。遵循用户语言、工作区 AGENTS.md 与更严格的授权。只能处理主代理交付的有界任务，不派遣其他代理，不改变模型/权限或重置失败预算。证据缺失返回主代理，不通过终端、插件或其他会话绕过限制。不要检查凭据或秘密。只报告实际修改与执行；未执行写 NOT_RUN，未知计数写 unknown。返回 status（PASS/FAIL/BLOCKED/ESCALATE）、task_id、candidate_id、summary、evidence、changes、tests（command/cwd/exit_code/counts/execution_status/result）、risks、unresolved、recommended_next_agent、reason。PASS 仅表示角色完成，不代表产品验收。交接后停止。';

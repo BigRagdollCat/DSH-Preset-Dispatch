@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDispatcher } from '../core.js';
+import { createDispatcher, presentationMetaFor } from '../core.js';
+import { createHistory } from '../history.js';
 
 function fixture(options = {}) {
   const state = { creates: [], disposed: 0, preflights: [], jobs: [], captured: [], children: [], policy: 'workspace-write' };
+  const history = createHistory();
   let runtime;
   const ctx = {
     get(key) {
@@ -36,15 +38,16 @@ function fixture(options = {}) {
     let release;
     const idle = options.hold ? new Promise(resolve => { release = resolve; }) : Promise.resolve();
     const child = { id: spec.sessionId, ctx: childCtx, cancelled: false,
-      session: { events: [], append(type, data) { this.events.push({ type, data }); }, snapshotEvents() { return [{ data: { reason: { kind: child.cancelled ? 'aborted' : 'completed' } } }]; } },
+      session: { events: [], ownEvents() { return options.ownEvents ?? []; }, append(type, data) { this.events.push({ type, data }); }, snapshotEvents() { return [...(options.snapshotPrefix ?? []), ...(options.ownEvents ?? []), { data: { reason: { kind: child.cancelled ? 'aborted' : 'completed' } } }]; } },
       followup() { for (const listener of listeners) listener({ agent: child }, async () => ({ kind: 'enter', messages: [] })); },
-      async whenIdle() { await idle; }, cancel() { child.cancelled = true; release?.(); },
+      async whenIdle() { await idle; if (options.idleError) throw new Error('child failed'); }, cancel() { child.cancelled = true; release?.(); },
     };
     await spec.setup(childCtx, child);
     state.children.push(child);
     return { agent: child, async dispose() { state.disposed++; child.cancel(); } };
   } };
   const api = {
+    history,
     serviceIdentity: value => value.original ?? value,
     randomUUID: () => `child-${++n}`, brandString: x => x, createUserMessage: x => x, SessionLogOffset: x => x,
     foldConsumedWork: events => ({ end: events.at(-1) }), finalAssistantOutput: () => [{ type: 'text', text: 'OK' }],
@@ -61,8 +64,78 @@ function fixture(options = {}) {
   const controller = new AbortController();
   const exec = { agent: parent, signal: controller.signal };
   const call = args => runtime.dispatchTool.execute({ preset: 'minimal', task: 'Return OK', ...args }, exec);
-  return { runtime, state, controller, call, parent, ctx };
+  return { runtime, state, controller, call, parent, ctx, history };
 }
+
+const usageEvent = (seq, inputTokens = 10) => ({type:'assistant/message',seq,data:{usage:{inputTokens,outputTokens:5,totalTokens:inputTokens+5}}});
+test('selection and own-session usage survive foreground output, history and presentation', async () => {
+  const f=fixture({ownEvents:[usageEvent(3)],snapshotPrefix:[usageEvent(0,9999)]});
+  const selection={difficulty:'medium',reason:'Known scope; choose authorized route'};
+  const value=await f.call({selection,provider:'p',model:'new',reasoning_effort:'low'});
+  assert.deepEqual(value.selection,selection);
+  assert.equal(value.tokenUsage.inputTokens,10,'exclude parent history');
+  assert.equal(value.tokenUsage.totalTokens,15);
+  assert.equal(value.routing.modelSource,'parent-explicit');
+  assert.equal(value.routing.reasoningEffort,'low');
+  assert.deepEqual(f.history.list()[0].selection,selection);
+  assert.deepEqual(f.history.list()[0].tokenUsage,value.tokenUsage);
+  assert.deepEqual(presentationMetaFor(value).selection,selection);
+  assert.deepEqual(presentationMetaFor(value).tokenUsage,value.tokenUsage);
+});
+test('selection remains optional and never changes the preset default', async () => {
+  const f=fixture({presetPolicies:[{preset:'minimal',enabled:true,defaultModel:{provider:'p',model:'new'},defaultEffort:'low',allowedModels:[],allowedEfforts:[]}]});
+  const original=await f.call({});
+  const graded=await f.call({selection:{difficulty:'high',reason:'High risk does not auto-upgrade'}});
+  assert.equal(original.selection,null);
+  assert.deepEqual(graded.routing,original.routing);
+  assert.equal(graded.tokenUsage.status,'unknown');
+  assert.equal(graded.tokenUsage.inputTokens,null);
+});
+test('background initial envelope carries selection and final history receives actual usage', async () => {
+  const f=fixture({ownEvents:[usageEvent(1)]});
+  const selection={difficulty:'low',reason:'Bounded retrieval'};
+  const initial=await f.call({selection,run_in_background:true});
+  assert.deepEqual(initial.selection,selection);
+  assert.equal(initial.tokenUsage,null);
+  await f.state.jobs[0].hooks.done;
+  assert.equal(f.history.list()[0].status,'completed');
+  assert.deepEqual(f.history.list()[0].selection,selection);
+  assert.equal(f.history.list()[0].tokenUsage.totalTokens,15);
+});
+test('selection cannot bypass locks, disabled authorization or unsupported effort', async () => {
+  const selection={difficulty:'high',reason:'Never a permission grant'};
+  const locked=fixture({presetPolicies:[{preset:'minimal',enabled:true,defaultModel:{provider:'p',model:'new'},lockModel:true,allowedModels:[],allowedEfforts:[]}]});
+  await assert.rejects(locked.call({selection,provider:'p',model:'m'}),/locked/);
+  const disabled=fixture({selectionEnabled:false});
+  await assert.rejects(disabled.call({selection,provider:'p',model:'new'}),/disabled/);
+  const effort=fixture(); await assert.rejects(effort.call({selection,reasoning_effort:'bad'}),/unsupported effort/);
+  for(const f of [locked,disabled,effort]) assert.equal(f.state.creates.length,0);
+});
+test('invalid selection is rejected before preflight or child creation', async () => {
+  const f=fixture();
+  for(const selection of [{difficulty:'extreme',reason:'x'},{difficulty:'low',reason:'x'.repeat(161)},{difficulty:'low',reason:'x',secret:'no'}]) {
+    await assert.rejects(f.call({selection}),/selection/);
+  }
+  assert.equal(f.state.preflights.length,0); assert.equal(f.state.creates.length,0);
+});
+test('failed child keeps reported usage and unknown attempts without retrying', async () => {
+  const f=fixture({idleError:true,ownEvents:[usageEvent(1),{type:'assistant/attempt',seq:2,data:{stream:[]}}]});
+  await assert.rejects(f.call({selection:{difficulty:'high',reason:'Failure evidence'}}),/child failed/);
+  const row=f.history.list()[0];
+  assert.equal(row.status,'error'); assert.equal(row.tokenUsage.status,'partial');
+  assert.equal(row.tokenUsage.inputTokens,10); assert.equal(row.tokenUsage.unmeteredAttempts,1);
+  assert.equal(f.state.creates.length,1); assert.equal(f.state.disposed,1);
+});
+
+test('cancelled child retains known usage without claiming missing replies cost zero', async () => {
+  const f=fixture({hold:true,ownEvents:[usageEvent(1),{type:'assistant/message',seq:2,data:{}}]});
+  const pending=f.call({selection:{difficulty:'medium',reason:'Cancellation sample'}});
+  while(!f.state.children.length) await new Promise(resolve=>setImmediate(resolve));
+  f.controller.abort(); const value=await pending;
+  assert.equal(value.stopReason,'aborted'); assert.equal(value.tokenUsage.status,'partial');
+  assert.equal(value.tokenUsage.missingMessages,1); assert.equal(f.history.list()[0].status,'aborted');
+  assert.equal(f.state.creates.length,1);
+});
 
 test('preset policy disables dispatch and list metadata', async () => {
   const f = fixture({ presetPolicies: [{ preset: 'minimal', enabled: false }] });

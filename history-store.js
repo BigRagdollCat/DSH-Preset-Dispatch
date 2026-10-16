@@ -6,6 +6,7 @@
 // The medium enforces /^[a-z][a-z0-9_]*$/ on domain names at runtime — hyphens are refused
 // (`defineDomain` throws "domain name ... must match"), which would leave history silently
 // in-memory. Verified against the real package by scripts/storage-contract-check.mjs.
+import { validSelection, validTokenUsage } from './dispatch-reporting.js?stable';
 export const DOMAIN_NAME = 'preset_dispatch_history';
 // The storage domain version is NOT bumped for the dispatch-visibility fields.
 // A version bump would make the medium treat every existing record as belonging to
@@ -21,9 +22,11 @@ export const RUNS_TABLE = 'runs';
  * stored document is plain data with no surprises for the domain schema and no field
  * can appear later without being declared here deliberately.
  */
-export const RUN_FIELDS = ['id', 'preset', 'role', 'provider', 'model', 'depth', 'parentSession', 'reasoningEffort', 'modelSource', 'effortSource', 'presetVersion', 'policySnapshot', 'startedAt', 'finishedAt', 'status', 'childSessionId', 'callId', 'rootCallId', 'catalogId', 'presetName', 'plannedRouting', 'observedRouting', 'observationState'];
+export const RUN_FIELDS = ['id', 'preset', 'role', 'provider', 'model', 'depth', 'parentSession', 'reasoningEffort', 'modelSource', 'effortSource', 'presetVersion', 'policySnapshot', 'startedAt', 'finishedAt', 'status', 'childSessionId', 'callId', 'rootCallId', 'catalogId', 'presetName', 'plannedRouting', 'observedRouting', 'observationState', 'selection', 'tokenUsage'];
 
-export const runRecord = row => Object.fromEntries(RUN_FIELDS.filter(key => row[key] !== undefined).map(key => [key, JSON.parse(JSON.stringify(row[key]))]));
+export const runRecord = row => Object.fromEntries(RUN_FIELDS.filter(key => row[key] !== undefined
+  && (key !== 'selection' || validSelection(row[key])) && (key !== 'tokenUsage' || validTokenUsage(row[key])))
+  .map(key => [key, JSON.parse(JSON.stringify(row[key]))]));
 
 /**
  * Field → zod type factory, kept beside RUN_FIELDS on purpose: the durable schema and the
@@ -47,6 +50,7 @@ export const RUN_FIELD_TYPES = {
   catalogId: z => z.string().nullable().optional(), presetName: z => z.string().nullable().optional(),
   plannedRouting: z => z.unknown().nullable().optional(), observedRouting: z => z.unknown().nullable().optional(),
   observationState: z => z.string().nullable().optional(),
+  selection: z => z.unknown().nullable().optional(), tokenUsage: z => z.unknown().nullable().optional(),
 };
 
 /** The record schema, built from the declared fields with the Host's own zod. */

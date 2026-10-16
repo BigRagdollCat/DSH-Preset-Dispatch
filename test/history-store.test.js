@@ -202,6 +202,7 @@ const fullRow = () => run({
   plannedRouting: { provider: 'p', model: 'm', reasoningEffort: 'high', modelSource: 'preset-default', effortSource: 'preset-default' },
   observedRouting: { provider: 'p', model: 'm', reasoningEffort: 'high' },
   observationState: 'observed',
+  selection: { difficulty: 'low', reason: 'Bounded evidence lookup' }, tokenUsage: null,
 });
 
 test('every declared record field survives a write and a load, and none is silently dropped', async () => {

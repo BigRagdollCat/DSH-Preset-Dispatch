@@ -68,29 +68,29 @@
 
 | 文件 | 哈希前 16 位 |
 |---|---|
-| client.js | `dfafb95ca1b03595` |
+| client.js | `bf8804854d9acadd` |
 | catalog.js | `baf1e3e948cd9df4` |
-| core.js | `2decd866879995ab` |
+| core.js | `a0af13e280b0015e` |
 | host.js | `08239ed1b78e4ed9` |
 | management-api.js | `9b528c98db9aff05` |
 | managed-presets.js | `fd92521797587a79` |
 | settings-api.js | `4cfc98672fb25dc6` |
 | policy.js | `96c62b17f61c3538` |
-| history.js | `80fefeacffe6c658` |
+| history.js | `ed501425f03b0341` |
 | role-managed.js | `791d6571041b7574` |
-| roles.js | `7c8de0eb8e9a6760` |
-| routing.js | `a5dcfe8ca100c1dc` |
+| roles.js | `aa05b5200de2076e` |
+| routing.js | `dd01a3977176686f` |
 | entry.js | `0461133659dab58e` |
 | cordis.patch.yml | `ed455e979b499f9d` |
-| package.json | `3ee84e2e0c893149` |
+| package.json | `edb23d3832b75384` |
 | index.js | `c483a209fff9b985` |
 | scripts/check.mjs | `efcbf646ed5b1a96` |
 | test/package.test.js | `c3eefe021b34e9fc` |
 | generate-roles.mjs | `54e5b618349c8ae6` |
 | save-protocol.js | `5eb05fcd971f2dcc` |
 | scripts/test.mjs | `219a08de363ef2ed` |
-| history-store.js | `c63791ddf9b32e5f` |
-| test/history-store.test.js | `2f1bc6198f90a904` |
+| history-store.js | `b7ea67a7508beed7` |
+| test/history-store.test.js | `3e6406d292637d46` |
 | catalog-cache.js | `71839cecefba433a` |
 | test/catalog-cache.test.js | `3b80f5a03d158889` |
 | migration-role-snapshot.json | `d27a2d85de8f09bc` |
@@ -104,13 +104,13 @@
 | settings-final.js | `b5c68ba25bd2e39d` |
 | test/agent-save.test.js | `98fbcfe06da3d7bb` |
 | test/catalog.test.js | `c62db506cb4a89ae` |
-| test/client-render.test.js | `898de67d05d59038` |
-| test/core.test.js | `9b1e7939c3ada2ce` |
+| test/client-render.test.js | `66c50d7221ca9ab7` |
+| test/core.test.js | `e0bb91f3329c049d` |
 | test/history.test.js | `2a0518e016359b4c` |
 | test/managed-presets.test.js | `b02883daad8d6d29` |
 | test/new-management-api.test.js | `5d84a9a4961e5569` |
 | test/policy.test.js | `1fd514787cc67d97` |
-| test/roles.test.js | `ba5a92745a5cb4a7` |
+| test/roles.test.js | `441d775176fd275b` |
 | test/save-protocol.test.js | `33ab5fdea672d538` |
 | scripts/pack-check.mjs | `dfca174cb6c8b294` |
 | scripts/live-probe.mjs | `a7560132dca76d72` |
@@ -119,12 +119,14 @@
 | dispatch-observation.js | `7308a4af133d064c` |
 | query-compaction-host.js | `4311b14fc6a387b8` |
 | query-compaction.js | `48890a5ec6a59a74` |
-| test/context-catalog.test.js | `7f7b324abcbf9dc5` |
+| test/context-catalog.test.js | `4fe65bb52e27a99d` |
 | test/dispatch-observation.test.js | `872e22e095b0ad13` |
 | test/query-compaction-host.test.js | `8ec0088a7db9643f` |
 | test/query-compaction.test.js | `a9287a3865ea0ead` |
 | test/visibility-api.test.js | `dab7b6cbad86c16b` |
-| visibility-api.js | `59ea3dd69a495d10` |
+| visibility-api.js | `4ba8c26df48789d4` |
+| dispatch-reporting.js | `62a72ee103d8ace4` |
+| test/dispatch-reporting.test.js | `03cf3364d6c8cd6b` |
 
 独立验证证据见 [验证](#验证) 一节；浏览器端视觉与真机点击仍需用户在本机确认。
 
@@ -174,9 +176,10 @@
 - `test/save-protocol.test.js`（9 项）：所有权规则（自有可授权，外部与遗留行只能降级为中性行）、只对变化行判定、写入前的池快照、修订号必填、`operationId` 重放与异负载拒绝、指纹区分重试。
 - `test/agent-save.test.js`（33 项）：用真实路由处理器驱动统一保存端点，且夹具**真实校验并递增修订号**（否则 CAS 断言没有意义）——预校验零写入、未授权模型被拒、确认扩权后按「池 → 策略」顺序写入、外部预设无法被授予权限、静态允许列表回退被拒、删除先停用再删除、删除失败后无可派遣残留、新建先中性化遗留行、新建可保存启用策略、定义与策略目标不一致被拒、修订号必填与过期拒绝、写入边界授权复核（收窄或读不到即零写入）、分项契约与待写分项、`operationId` 重放与查询、已退役端点不再注册。
 - `test/policy.test.js`：新增保存期上下文校验（池子集、默认模型范围、按模型能力校验档位），并确认撤销授权后**读取**旧配置不再报错（只有保存会被拒）。
-- `test/client-render.test.js`（36 项）：最小 React 钩子模拟器加载真实 client.js，覆盖——单页且不再调用退役端点；页面自带样式注入（含卡片网格规则，防止页面退化成裸 HTML）；卡片打开同时含两分区的唯一弹窗并载入已存提示词；目录中未授权模型照常列出并标记「需授权」；勾选未授权模型会阻止保存直到确认全局授权；自有预设保存同时提交定义+策略+已确认授权；**非本插件预设完全只读**（无按钮、无点击、不写入）；零写入报「未保存任何更改」且不再显示「部分已保存」；部分写入如实报告已落盘分项并保持基线修订号；恢复只提交未落盘分项并以刚读到的修订号围栏；冲突按**草稿基线**比较、显示服务器值 vs 草稿值、需按差异签名逐次确认；未完成草稿刷新后恢复（落盘内容**不含扩权确认**，主保存按钮仍锁定）；复制可命名而更新锁定 ID；200 但缺少分项契约视为结果未知；传输失败视为结果未知；重新读取成功后解除锁定；全局弹窗管理授权池/深度/失效策略清理；历史与新建入口；首次读取失败仍可重试且不会在缺失数据上打开编辑器；派遣卡片三阶段与真实观测帧；徽标仅对本插件子会话显示；身份快照冻结；预览头部徽标；V11 进入子会话与侧边栏入口（含服务缺失降级、未确认编号不显示入口、start 阶段以记录行状态为准）；插槽夹具只激活已声明插槽并释放返回的 disposer；卸载释放全部四个贡献且不再新增注册。
+- `test/client-render.test.js`（41 项）：最小 React 钩子模拟器加载真实 client.js，覆盖——单页且不再调用退役端点；页面自带样式注入（含卡片网格规则，防止页面退化成裸 HTML）；卡片打开同时含两分区的唯一弹窗并载入已存提示词；目录中未授权模型照常列出并标记「需授权」；勾选未授权模型会阻止保存直到确认全局授权；自有预设保存同时提交定义+策略+已确认授权；**非本插件预设完全只读**（无按钮、无点击、不写入）；零写入报「未保存任何更改」且不再显示「部分已保存」；部分写入如实报告已落盘分项并保持基线修订号；恢复只提交未落盘分项并以刚读到的修订号围栏；冲突按**草稿基线**比较、显示服务器值 vs 草稿值、需按差异签名逐次确认；未完成草稿刷新后恢复（落盘内容**不含扩权确认**，主保存按钮仍锁定）；复制可命名而更新锁定 ID；200 但缺少分项契约视为结果未知；传输失败视为结果未知；重新读取成功后解除锁定；全局弹窗管理授权池/深度/失效策略清理；历史与新建入口；首次读取失败仍可重试且不会在缺失数据上打开编辑器；派遣卡片三阶段与真实观测帧；子会话徽标展示 Agent 预设及已观测模型/思考强度，原生子代理无插件记录时从子会话投影取值，未观测值标未核实；身份快照冻结；一次性只读子会话底部 dock 与预览头部徽标；V11 进入子会话与侧边栏入口（含服务缺失降级、未确认编号不显示入口、start 阶段以记录行状态为准）；插槽夹具只激活已声明插槽并释放返回的 disposer；卸载释放全部五个贡献且不再新增注册。
 
-- `test/context-catalog.test.js`（26 项）：默认精简目录、显式全量诊断、`catalogId` 会话绑定与不可当授权票据、目录失败隔离。
+- `test/context-catalog.test.js`（26 项）：默认精简目录、显式全量诊断、`catalogId` 会话绑定与不可当授权票据、目录失败隔离；短常驻提示与按需分级/能力/成本边界。
+- `test/dispatch-reporting.test.js`（6 项）：可选 selection 的枚举/160 Unicode 字符上限；回复用量去重、缺失/零值/溢出、未计量尝试、字段白名单、持久化恢复及可见性输出。`test/core.test.js` 补前后台传递、默认兼容、授权拒绝、失败与取消的集成断言。实现说明见 [轻量选模](<docs/11-lightweight-model-selection.md>)；计数不是账单或质量评分，真实模型对照尚未执行。
 - `test/dispatch-observation.test.js`（22 项）：计划与实际分离、适配器默认不猜测、高水位序号去重、变化基线永不清空（A→B→B→B 与 A→B→B→A）、继承前缀边界、投影初始化与视图稳定性。
 - `test/visibility-api.test.js`（27 项）：操作者认证、编号精确绑定、载荷不含任务/回答/凭证、pending 流忽略无关更新、已结算记录首帧后关闭、订阅与流在结束、失配、卸载时释放。
 - `test/query-compaction.test.js`（27 项）：资格门槛（含无结果关联阻塞）、官方替换对、失败与恢复、不重复扣减、不压缩工作结果。

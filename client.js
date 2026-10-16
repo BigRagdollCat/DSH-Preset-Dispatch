@@ -27,12 +27,12 @@ window.__ModuleLoader__.load({
       poolHint: '这是整个 Harness 的子代理模型授权池。此处勾选的模型会同时影响其他使用子代理模型的入口。',
       depth: '最大派遣深度', depthHint: '默认 1 层。实际深度同时受 DSH 全局限制约束，0 表示禁止派遣。',
       orphan: '发现失效策略行', orphanHint: '这些预设已不在 DSH 预设列表中，对应策略行仍被保留。清理后不可恢复。', orphanClean: '清理失效策略',
-      historyTitle: '调用记录', historyHint: '仅保留最近 50 条元数据（角色、模型、强度、时间、状态），不保存任务、回答或推理内容。记录写入本地存储，重启后仍在；中断的派遣会标记为已中断。', historyRefresh: '刷新记录', historyEmpty: '暂无调用记录',
+      historyTitle: '调用记录', historyHint: '保留最近 50 条派遣元数据、可选分级/短理由及已报告 Token 用量，不主动保存任务、回答或推理内容。理由由主代理提供，请勿填写秘密。用量仅计子会话已提交回复；不含主代理开销，不等于账单或质量评分。', historyRefresh: '刷新记录', historyEmpty: '暂无调用记录',
       dispatchTitle: '派遣子代理', dispatchPreparing: '准备中', dispatchStarted: '已派遣，等待子会话', dispatchResult: '派遣结果',
       planLabel: '计划配置', actualLabel: '实际请求', planPending: '计划配置，尚未观察到实际请求', restoredUnknown: '历史配置，未核实实际请求',
       verifiedActual: '实际请求（已核实）', unknownValue: '未知', adapterDefault: '模型默认（具体值未披露）', notStarted: '未确认启动',
       childSession: '子会话', callRef: '调用', presetSnapshot: '预设快照', noArgs: '（参数未记录）',
-      badgeTitle: '本插件派遣的子代理', badgeCollapsed: '展开详情', badgeUnknown: '实际配置未核实',
+      badgeTitle: '子代理配置', badgeCollapsed: '展开详情', badgeUnknown: '实际配置未核实',
       dirty: '有未保存的更改', clean: '已同步', saved: '已保存并生效', savedPartial: '部分已保存', deleteTitle: '删除预设', deleteHint: '删除后关联派遣策略会保留但不能调用。默认预设、仍有活跃会话的预设会被拒绝。',
       confirmDiscard: '放弃当前未保存的更改？', confirmReload: '放弃未保存的更改并重新读取？',
       copy: '复制', remove: '删除', version: '版本', brokenPreset: '预设加载异常：', missingPreset: '该预设已不在 DSH 预设列表中（可能已被删除）。',
@@ -155,14 +155,24 @@ window.__ModuleLoader__.load({
 .pdv-detail-row code{font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);overflow-wrap:anywhere}
 .pdv-error{color:var(--dsw-alias-state-error-primary);font-size:12px;overflow-wrap:anywhere}
 .pdv-pre{margin:0;max-height:220px;overflow:auto;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-sm,8px);background:var(--dsw-alias-bg-layer-2);padding:8px;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-secondary)}
+.pdv-dock{display:flex;justify-content:flex-start;min-width:0;padding:4px 0}
 .pdv-badge-wrap{display:inline-flex;flex-direction:column;gap:4px;min-width:0;max-width:100%}
-.pdv-badge{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:0 0;padding:0 8px;height:24px;font-size:12px;cursor:pointer;color:var(--dsw-alias-label-secondary)}
+.pdv-badge{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:0 0;padding:0 8px;min-height:24px;font-size:12px;cursor:pointer;color:var(--dsw-alias-label-secondary);text-align:left}
 .pdv-badge:hover{background:var(--dsw-alias-interactive-bg-hover,var(--dsw-alias-bg-layer-2))}
 .pdv-badge-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pdv-badge-unknown{color:var(--dsw-alias-state-warn-primary,var(--dsw-alias-state-error-primary))}
 @media(max-width:640px){.pdv-card{padding:8px 10px}.pdv-route-value{font-size:11px}}
 `;
     const routeKey = route => JSON.stringify([route.provider, route.model]);
+    const selectionText = value => value ? '任务分级（主代理自报）：' + ({low:'低',medium:'中',high:'高'}[value.difficulty] || '未知') + '；选模理由：' + String(value.reason || '未记录') : '选模决策：未记录';
+    const usageText = value => {
+      if (!value || value.status === 'unknown') return 'Token 用量：未知（没有可核实的回复用量）';
+      const n = key => Number.isSafeInteger(value[key]) && value[key] >= 0 ? String(value[key]) : '未知';
+      return '已报告 Token：输入 ' + n('inputTokens') + ' · 输出 ' + n('outputTokens') + ' · 总计 ' + n('totalTokens')
+        + ' · 缓存读 ' + n('cacheReadTokens') + ' · 缓存写 ' + n('cacheWriteTokens') + ' · 推理 ' + n('reasoningTokens')
+        + '（' + (value.status === 'partial' ? '部分统计' : '已提交回复统计') + '；回复 ' + n('reportedMessages')
+        + '；缺失 ' + n('missingMessages') + '；未计量尝试 ' + n('unmeteredAttempts') + '；不含主代理开销，非账单）';
+    };
     return { inject: ['slots', 'locale'], apply(ctx) {
       // Chinese dictionaries for every registered language keep the page Chinese.
       for (const language of ctx.locale.getLocale().locales) ctx.effect(() => ctx.locale.register('agent-manager-zh-v3', language.id, dict), 'Agent 管理中文文案');
@@ -596,6 +606,8 @@ window.__ModuleLoader__.load({
                   h('span',{className:'pd-card-head'},h('span',{className:'pd-card-identity'},h('span',{className:'pd-card-name'},run.presetName||run.preset),h('span',{className:'pd-pill'+(verified?' pd-pill-on':''),title:verified?t('verifiedActual'):(legacy?t('restoredUnknown'):t('planPending'))},verified?t('actualLabel'):(legacy?'历史记录':t('planLabel'))),h('span',{className:'pd-pill'},String(run.status||''))),cardId(run.startedAt||'')),
                   h('span',{className:'pd-card-desc'},(route.provider||'?')+' / '+(route.model||'?')+' · '+(route.reasoningEffort||t('adapterDefault'))),
                   planned&&verified?h('span',{className:'pd-muted'},t('planLabel')+'：'+(planned.provider||'?')+' / '+(planned.model||'?')+' · '+(planned.reasoningEffort||t('unknownValue'))):null,
+                  h('span',{className:'pd-muted'},selectionText(run.selection)),
+                  h('span',{className:'pd-muted'},usageText(run.tokenUsage)),
                   h('span',{className:'pd-muted'},(verified?t('actualLabel'):(legacy?'历史记录，未核实实际请求':t('planPending')))+'；模型：'+source(run.modelSource)+'；强度：'+source(effortSource)+(run.callId?'；调用：'+run.callId:'')+(run.childSessionId?'；子会话：'+run.childSessionId:''))));
             };
             const list=runs===null?h('div',{className:'pd-empty'},runError||t('loading')):(runs.length?h('ul',{className:'pd-list'},...runs.map(historyRow)):h('div',{className:'pd-empty'},t('historyEmpty')));
@@ -966,6 +978,8 @@ window.__ModuleLoader__.load({
             failed ? h('span',{className:'pdv-error'},'错误'+(errorReason?'：'+errorReason:'')) : null));
           if (disclosure.expanded) {
             const details = [];
+            details.push(detailRow('选模决策', selectionText(row?.selection ?? meta?.selection), false));
+            details.push(detailRow('用量', usageText(row?.tokenUsage ?? meta?.tokenUsage), false));
             details.push(detailRow(t('callRef'), ids.callId ?? t('unknownValue'), true));
             details.push(detailRow(t('childSession'), ids.childSessionId ?? t('notStarted'), true));
             if (meta?.child?.jobId) details.push(detailRow('后台作业', meta.child.jobId, true));
@@ -984,39 +998,38 @@ window.__ModuleLoader__.load({
       }
 
       /**
-       * The read-only badge appended to a child session's composer, or to its header when no
-       * composer is rendered.
-       *
-       * It is shown only for a subagent session whose own projection exists AND whose dispatch
-       * record this plugin actually holds: a session that merely has a preset id is not proof
-       * that this plugin created it. A record without an observed request is labelled as such
-       * rather than being presented as the real configuration.
+       * Child-session identity comes from the session's own projection or from the official
+       * Session snapshot. A dispatch record is optional: native subagents have no record in this
+       * plugin, but their own committed request can still be read from the route projection.
+       * Never promote a planned route to an actual one, and never infer an undisclosed effort.
        */
       function ChildBadge(props) {
         const { sessionId, useProjection } = props;
         let route = null;
         if (typeof useProjection === 'function') { try { route = useProjection('presetDispatchRoute'); } catch { route = null; } }
-        const isChild = route !== null && route !== undefined && route.origin === 'subagent' && typeof route.agentPreset === 'string' && route.agentPreset !== '';
-        // The parent session comes from the child's own projection header (or the slot props when
-        // the surface is rendered inside the dispatching session). The endpoint binds a record to
-        // its parent, so it is sent whenever it is known; `unbound` marks the case where it is not.
-        const parentSession = props.parentSession ?? route?.parentSession ?? null;
+        const isChild = route?.origin === 'subagent' || !!props.session?.subagent;
+        const parentSession = props.parentSession ?? route?.parentSession ?? props.session?.subagent?.address?.parentSessionId ?? null;
         const { row, gap, unbound } = useVisibility({ childSessionId: sessionId, parentSession }, isChild);
         const [open, setOpen] = React.useState(false);
-        if (!isChild) return null;
-        // No record yet, or a stream that never answered: show nothing rather than a guess.
-        if (!row || row.pending === true) return null;
-        const observed = row.observed ?? null;
-        const verified = observed !== null && observed !== undefined;
-        const name = row.presetName || row.preset || route.agentPreset;
-        const short = [name, observed?.model || row.planned?.model || null, observed?.reasoningEffort || null].filter(Boolean).join(' · ');
+        if (!isChild || !sessionId) return null;
+        // The record is bound to this child and parent by the endpoint. If it does not exist,
+        // the child's own projected request remains a valid, independently observed source.
+        const record = row && row.pending !== true && row.childSessionId === sessionId
+          && (!parentSession || row.parentSession === parentSession) ? row : null;
+        const observed = record?.observed ?? route?.observed ?? null;
+        const verified = typeof observed?.provider === 'string' && !!observed.provider
+          && typeof observed?.model === 'string' && !!observed.model;
+        const name = record?.presetName || record?.preset || route?.agentPreset || t('unknownValue');
+        const model = verified ? [observed.provider, observed.model].filter(Boolean).join(' / ') : '未核实';
+        const effort = verified ? (observed.reasoningEffort || (record?.observedEffortSource === 'adapter-default' ? t('adapterDefault') : t('unknownValue'))) : '未核实';
+        const short = 'Agent 预设：' + name + ' · 模型：' + model + ' · 思考强度：' + effort;
         const detail = [
-          t('planLabel') + '：' + routeLine(row.planned, row.planned?.modelSource),
-          t('actualLabel') + '：' + (verified ? routeLine(observed, row.observedEffortSource) : (row.restored ? t('restoredUnknown') : t('planPending'))),
-          t('presetSnapshot') + '：' + String(row.preset ?? route.agentPreset) + (row.presetVersion === null || row.presetVersion === undefined ? '' : ' · v' + String(row.presetVersion)),
-          t('childSession') + '：' + String(sessionId ?? ''),
-          row.verification || '',
-          unbound ? '未提供父会话，实际请求未核实。' : '',
+          record ? t('planLabel') + '：' + routeLine(record.planned, record.planned?.modelSource) : null,
+          t('actualLabel') + '：' + (verified ? routeLine(observed, record?.observedEffortSource) : (record?.restored ? t('restoredUnknown') : t('planPending'))),
+          t('presetSnapshot') + '：' + String(record?.preset ?? route?.agentPreset ?? t('unknownValue')) + (record?.presetVersion === null || record?.presetVersion === undefined ? '' : ' · v' + String(record.presetVersion)),
+          t('childSession') + '：' + String(sessionId),
+          record?.verification || '',
+          unbound ? '未提供父会话，派遣记录未核实；仅展示子会话自身的请求投影。' : '',
         ].filter(Boolean);
         return h('span',{className:'pdv-badge-wrap'},
           h('style',null,viewCss),
@@ -1024,6 +1037,12 @@ window.__ModuleLoader__.load({
             h('span',{className:'pdv-badge-text'},short),
             verified ? null : h('span',{className:'pdv-badge-unknown'},t('badgeUnknown'))),
           open ? h('span',{className:'pdv-details'},...detail.map((line,index)=>h('span',{className:'pdv-detail-row',key:index},line)),gap?h('span',{className:'pdv-detail-row'},'实时状态不可用'):null) : null);
+      }
+      // One-shot subagents replace the resident composer. Its input.left slot is therefore absent;
+      // input.dock belongs to the enclosing conversation and stays outside that replacement.
+      function ReadOnlyChildBadge(props) {
+        if (props.session?.subagent?.address?.mode !== 'one-shot') return null;
+        return h('div',{className:'pdv-dock'},h(ChildBadge,props));
       }
 
       ctx.slots.inject('settings.section', () => ctx.slots.register({name:'settings.section',id:'preset-dispatch',order:21,label:() => t('title')},Page));
@@ -1043,6 +1062,7 @@ window.__ModuleLoader__.load({
       const chatViews = [
         ['tool.call.toolview', {name:'tool.call.toolview',key:'preset_dispatch'}, DispatchCard, '派遣卡片'],
         ['conversation.input.left', {name:'conversation.input.left',id:'preset-dispatch-child',order:12,label:() => t('badgeTitle')}, ChildBadge, '输入区徽标'],
+        ['conversation.input.dock', {name:'conversation.input.dock',id:'preset-dispatch-child',order:12,label:() => t('badgeTitle')}, ReadOnlyChildBadge, '只读子会话底部配置'],
         ['conversation.session.header.actions', {name:'conversation.session.header.actions',id:'preset-dispatch-child',order:12,label:() => t('badgeTitle')}, ChildBadge, '会话标题徽标'],
       ];
       // Independent per surface: only the failing one warns, the other two still register.

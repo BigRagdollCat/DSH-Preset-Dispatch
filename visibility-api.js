@@ -90,6 +90,8 @@ export function visibilityPayload(row, { live = null, restored = false } = {}) {
     finishedAt: row?.finishedAt ?? null,
     planned,
     observed,
+    selection: row?.selection ?? null,
+    tokenUsage: row?.tokenUsage ?? null,
     verified,
     observedEffortSource: summary.observedEffortSource ?? 'unknown',
     changes: summary.changes ?? [],

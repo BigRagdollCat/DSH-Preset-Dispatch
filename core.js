@@ -2,6 +2,7 @@ import { applyPresetPolicy, assertPresetRoute } from './policy.js?stable';
 import { ROLES, roleTools, roleDenial } from './roles.js?stable';
 import { templateRole } from './managed-presets.js?stable';
 import { buildCatalog } from './catalog.js?stable';
+import { parseSelection, summarizeTokenUsage, SELECTION_REASON_LIMIT, SELECTION_LEVELS } from './dispatch-reporting.js?stable';
 import { observationFromPlan, observationWithEvents, observationFinished, observationCreated, planRouting, routingView } from './dispatch-observation.js?stable';
 
 /**
@@ -43,6 +44,8 @@ export function presentationMetaFor(value) {
     catalogId: value.catalogId ?? null,
     observationState,
     observedRouting,
+    selection: value.selection ?? null,
+    tokenUsage: value.tokenUsage ?? null,
     status: value.status ?? value.stopReason ?? observation?.state ?? (background ? 'running' : null),
     kind: background ? 'background' : 'foreground',
     preset: value.preset ?? null,
@@ -82,7 +85,7 @@ export function createDispatcher(ctx, config, api) {
     presentationMeta: (_args, value) => presentationMetaFor(value),
   };
 
-  function drive(handle, signal) {
+  function drive(handle, signal, ticket) {
     const child = handle.agent;
     let cancelled = false;
     let disposal;
@@ -114,7 +117,14 @@ export function createDispatcher(ctx, config, api) {
           const kind = end?.kind;
           const stopReason = kind === 'completed' ? 'completed' : cancelled || kind === 'aborted' ? 'aborted' : kind === 'max-tokens' ? 'max-tokens' : kind === 'blocked' ? 'refusal' : 'error';
           return { output: api.finalAssistantOutput(events) ?? [], stopReason };
-        } finally { signal.removeEventListener('abort', abort); }
+        } finally {
+          signal.removeEventListener('abort', abort);
+          // Official ownEvents() excludes inherited parent history. Never guess the boundary.
+          try {
+            ticket.tokenUsage = typeof child.session.ownEvents === 'function' ? summarizeTokenUsage(child.session.ownEvents()) : null;
+            if (ticket.record) api.history?.update?.(ticket.record, { tokenUsage: ticket.tokenUsage });
+          } catch { /* reporting failure must not change a completed/failed/cancelled task */ }
+        }
       })();
       // Prevent an unhandled rejection while start() establishes the child catalog.
       run.result.catch(() => {});
@@ -268,7 +278,7 @@ export function createDispatcher(ctx, config, api) {
         noteObservation(ticket);
         api.onChildCreated?.(ticket, handle);
       }
-      return drive(handle, request.signal).begin(request.prompt);
+      return drive(handle, request.signal, ticket).begin(request.prompt);
     },
   };
 
@@ -288,9 +298,10 @@ export function createDispatcher(ctx, config, api) {
     verification: '测试验证区分 RED/GREEN/回归/最终门禁，复用有效证据。',
     prohibited: '禁止自动升级重试、改模型绕过失败或拒绝、请求权限升级绕过拒绝。',
     presetPolicy: '每行的 policy、pinnedModel、pinnedEffort 与 unavailableModels 决定该预设的限制：compact 结果中未列 usableModels 的行可用 models 中的全部路由，列出的行以 usableModels 为准；锁定预设拒绝覆盖。',
+    taskAssessment: '先判断分工收益，简单任务直接完成；同批派遣复用目录，配置变化或被拒后再刷新。每个子任务只做一次低/中/高分级：低=范围小、证据足、易验证；中=多处修改或有少量未知；高=跨模块因果链、关键安全/数据风险或错误代价高。不另派代理打分，不输出评分长文。',
     modelChoice: explicitAvailable
-      ? '从 models 列出的授权路由中按风险与模型实际能力选择；不知道可用档位时省略 reasoning_effort，不猜测 max/xhigh；模型与工具权限彼此独立。'
-      : '当前不能显式指定模型或强度，只能继承父代理模型。',
+      ? '先满足所需能力，再在该预设 usableModels（未列时用 models）与锁定/强度限制内选择。目录只证明授权和档位，不证明价格、能力排名或视觉链路；看图先用一张非敏感样本验证，失败不批量派遣。仅有可靠能力与成本证据时选能胜任的低成本配置，否则使用预设默认（无默认才继承），不按模型名称排名；必需能力未证实则暂停该任务，默认值不代表能力已验证。证据少不等于盲目提高强度；在支持档位中按推理需求选择，不把高难度固定映射到 max/xhigh。动态选择时显式传 provider/model/reasoning_effort；档位未知则省略并保留合法默认。可附 selection={difficulty:low|medium|high,reason:简短理由}；理由只写能力/风险/成本依据，不含任务原文、秘密或推理过程。默认值不是锁定值，但拒绝后不得自动换模型重试。'
+      : '当前不能显式指定模型或强度；分级与 selection 记录不授予选模权限。只能按现有授权执行，不得用分级绕过限制。',
   });
 
   const listTool = {
@@ -395,6 +406,7 @@ export function createDispatcher(ctx, config, api) {
         provider: { type: 'string', minLength: 1, description: 'Optional authorized LLM provider; supply together with model. Omit both to use the preset default, or inherit when no default is configured.' },
         model: { type: 'string', minLength: 1, description: 'Optional exact model id; requires provider.' },
         reasoning_effort: { type: 'string', minLength: 1, description: 'Optional effort id supported by the effective model, including when inheriting the route.' },
+        selection: { type: 'object', additionalProperties: false, description: 'Optional brief selection rationale, stored in history; advisory only, never changes model or permissions. No task text, secrets, or reasoning trace.', properties: { difficulty: { type: 'string', enum: SELECTION_LEVELS }, reason: { type: 'string', minLength: 1, maxLength: SELECTION_REASON_LIMIT } }, required: ['difficulty', 'reason'] },
         run_in_background: { type: 'boolean', default: false, description: 'Return a job id immediately instead of waiting. Collect or cancel it with the job tools.' },
         catalogId: { type: 'string', minLength: 1, description: 'Optional catalogId from the preset_list answer this dispatch follows. Correlation only: it is not verified and never replaces the live authorization check, and omitting it keeps the previous behavior.' },
       }, required: ['preset', 'task'],
@@ -406,6 +418,7 @@ export function createDispatcher(ctx, config, api) {
       if (!parent) fail('requires a calling agent');
       const presetId = nonempty(args.preset, 'preset');
       const task = nonempty(args.task, 'task');
+      const selection = parseSelection(args.selection);
       // The catalog id is accepted for correlation only. It is deliberately not checked against a
       // registry, not required, and not consultable for authorization: this phase has no
       // cross-session ticket, so an id must never widen what may be dispatched or excuse a refusal.
@@ -443,7 +456,7 @@ export function createDispatcher(ctx, config, api) {
       const rootCallId = typeof exec.rootCallId === 'string' && exec.rootCallId !== '' ? exec.rootCallId : null;
       const plannedRouting = planRouting(routing);
       let observation = observationFromPlan({ childSessionId, callId, plannedRouting, at: new Date().toISOString() });
-      const ticket = { preset: presetId, catalogId, policy, agentOptions, definition, routing, childSessionId, observation, meta: api.childSessionMeta(parent, depth, false) };
+      const ticket = { preset: presetId, catalogId, selection, tokenUsage: null, policy, agentOptions, definition, routing, childSessionId, observation, meta: api.childSessionMeta(parent, depth, false) };
       const signal = AbortSignal.any([exec.signal, lifetime.signal]);
       signal.throwIfAborted();
       const preset = await ctx.agentPresets.resolve(presetId);
@@ -477,7 +490,7 @@ export function createDispatcher(ctx, config, api) {
         // exists: a record that only learned its parent at finish would be unaddressable for the
         // whole run, which is exactly when the visibility API must bind a lookup to a session.
         parentSession: parent.id,
-        plannedRouting, observationState: observation.state,
+        plannedRouting, observationState: observation.state, selection, tokenUsage: null,
         policySnapshot:selectedPolicy?structuredClone(selectedPolicy):null,
       });
       ticket.record = record;
@@ -490,7 +503,7 @@ export function createDispatcher(ctx, config, api) {
             finishObservation(ticket, result.stopReason, new Date().toISOString());
             ticketByChild.delete(childSessionId);
             api.history?.finish(record,result.stopReason,run.id);
-            return {...result,routing,presetName,callId,rootCallId,observation:ticket.observation,routingView:routingView(ticket.observation)};
+            return {...result,routing,presetName,callId,rootCallId,selection,tokenUsage:ticket.tokenUsage,observation:ticket.observation,routingView:routingView(ticket.observation)};
           },error=>{
             finishObservation(ticket, childSignal.aborted?'aborted':'error', new Date().toISOString());
             ticketByChild.delete(childSessionId);
@@ -521,7 +534,7 @@ export function createDispatcher(ctx, config, api) {
         // `jobId` is a handle for collecting the result. It is NOT proof that a child
         // started, so the answer reports the reserved child session id separately and
         // leaves `childStarted` false until the child really exists.
-        return { kind: 'background', preset: presetId, presetName, presetVersion: definition?.version ?? null, jobId, childSessionId, parentSessionId: parent.id, childStarted: false, callId, rootCallId, catalogId, routing, plannedRouting, observationState: ticket.observation.state, observation: ticket.observation, routingView: routingView(ticket.observation) };
+        return { kind: 'background', preset: presetId, presetName, presetVersion: definition?.version ?? null, jobId, childSessionId, parentSessionId: parent.id, childStarted: false, callId, rootCallId, catalogId, routing, plannedRouting, selection, tokenUsage: null, observationState: ticket.observation.state, observation: ticket.observation, routingView: routingView(ticket.observation) };
       }
       const run = await start(signal);
       // The run result is spread FIRST so the recorded envelope fields below cannot be overwritten

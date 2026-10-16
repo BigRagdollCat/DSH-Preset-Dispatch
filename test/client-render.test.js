@@ -192,6 +192,7 @@ function makeSlots() {
       'settings.section',
       'tool.call.toolview',
       'conversation.input.left',
+      'conversation.input.dock',
       'conversation.session.header.actions',
     ]),
     injectNames: [], unmatchedInjectNames: [], disposers: [],
@@ -348,16 +349,17 @@ async function boot(responses, opts = {}) {
   api.apply(ctx);
   assert.ok(slots.byName.get('settings.section')?.length, 'the settings.section page must be registered');
   if (opts.disposeAfterApply) {
-    // Do not await here: all four contributions must exist synchronously when apply returns.
+    // Do not await here: all five contributions must exist synchronously when apply returns.
     const entries = [
       contribution(slots, 'settings.section', 'preset-dispatch'),
       contribution(slots, 'tool.call.toolview', 'preset_dispatch'),
       contribution(slots, 'conversation.input.left', 'preset-dispatch-child'),
+      contribution(slots, 'conversation.input.dock', 'preset-dispatch-child'),
       contribution(slots, 'conversation.session.header.actions', 'preset-dispatch-child'),
     ];
-    assert.equal(slots.calls.length, 4, 'apply synchronously registers all four contributions');
-    assert.equal(entries.filter(entry => entry.disposed === true).length, 0, 'all four contributions are active when apply returns');
-    assert.equal(slotDisposers.length, 4, 'each real slot injection supplies its own registration disposer');
+    assert.equal(slots.calls.length, 5, 'apply synchronously registers all five contributions');
+    assert.equal(entries.filter(entry => entry.disposed === true).length, 0, 'all five contributions are active when apply returns');
+    assert.equal(slotDisposers.length, 5, 'each real slot injection supplies its own registration disposer');
     slots.dispose();
     for (const entry of entries) assert.equal(entry.disposed, true, `immediate unload releases the ${entry.name} contribution`);
     assert.equal(slots.calls.filter(entry => entry.disposed !== true).length, 0, 'immediate unload leaves no active contribution');
@@ -591,6 +593,29 @@ test('history and create entry points still work on the single page', async () =
   const after = texts(tree).join('|');
   assert.match(after, /稳定 ID/);
   assert.match(after, /新建 Agent 预设/);
+});
+
+test('history shows selection as text, partial token usage, and honest legacy unknowns', async () => {
+  const { Page, emu } = await boot({state:snapshot(),history:{runs:[
+    {preset:'researcher',status:'completed',selection:{difficulty:'low',reason:'<script>not markup</script>'},
+      tokenUsage:{status:'partial',inputTokens:10,outputTokens:4,totalTokens:null,reportedMessages:1,missingMessages:1,unmeteredAttempts:1}},
+    {preset:'old',status:'completed'},
+  ]}});
+  let tree=await render(Page,emu); byText(tree,'调用记录').props.onClick(); tree=await render(Page,emu);
+  const shown=texts(tree).join('|');
+  assert.match(shown,/任务分级（主代理自报）：低/); assert.match(shown,/<script>not markup<\/script>/);
+  assert.match(shown,/输入 10.*输出 4.*总计 未知/); assert.match(shown,/部分统计/);
+  assert.match(shown,/不含主代理开销，非账单/); assert.match(shown,/Token 用量：未知/);
+  assert.equal(findAll(tree,n=>n.type==='script').length,0);
+});
+
+test('expanded dispatch card shows persisted decision and usage without requiring new arguments', async () => {
+  const { emu, slots } = await boot({state:snapshot(),history:{runs:[]}});
+  const Card=contribution(slots,'tool.call.toolview','preset_dispatch').component;
+  const tree=await renderWith(Card,emu,hostProps({phase:'result',useDisclosure:()=>({expanded:true,toggle(){}}),
+    block:runBlock({meta:{selection:{difficulty:'high',reason:'High error cost'},tokenUsage:{status:'reported',inputTokens:40,outputTokens:8,totalTokens:48,reportedMessages:2,missingMessages:0,unmeteredAttempts:0}}})}));
+  assert.match(texts(tree).join('|'),/High error cost/);
+  assert.match(texts(tree).join('|'),/输入 40.*输出 8.*总计 48/);
 });
 
 test('a transport failure counts as an unknown outcome and demands a reload before retrying', async () => {
@@ -931,6 +956,7 @@ test('the chat surfaces are registered as real slot contributions, keyed by thei
   assert.ok(page.component, 'the settings page must still be registered alongside the chat surfaces');
   assert.ok(toolview.component, 'the dispatch tool card must still be registered');
   assert.equal(slots.calls.filter(entry => entry.name === 'conversation.input.left').length, 1, 'exactly one badge may be contributed per slot');
+  assert.equal(slots.calls.filter(entry => entry.name === 'conversation.input.dock').length, 1, 'one-shot sessions need the bottom dock outside the composer');
   assert.equal(slots.calls.filter(entry => entry.name === 'conversation.session.header.actions').length, 1, 'the preview header must have exactly one badge contribution');
 });
 
@@ -1169,16 +1195,17 @@ for (const [status, label] of [['failed', '失败'], ['completed', '已完成'],
   });
 }
 
-test('unloading after registration releases the settings page and all three chat contributions', async () => {
+test('unloading after registration releases the settings page and all four chat contributions', async () => {
   const { slots } = await boot({ state: snapshot(), history: { runs: [] } });
   const entries = [
     contribution(slots, 'settings.section', 'preset-dispatch'),
     contribution(slots, 'tool.call.toolview', 'preset_dispatch'),
     contribution(slots, 'conversation.input.left', 'preset-dispatch-child'),
+    contribution(slots, 'conversation.input.dock', 'preset-dispatch-child'),
     contribution(slots, 'conversation.session.header.actions', 'preset-dispatch-child'),
   ];
-  assert.equal(entries.filter(entry => entry.disposed === true).length, 0, 'all four contributions are active before unload');
-  assert.equal(slots.disposers.length, 4, 'each real slot injection returns its own registration disposer');
+  assert.equal(entries.filter(entry => entry.disposed === true).length, 0, 'all five contributions are active before unload');
+  assert.equal(slots.disposers.length, 5, 'each real slot injection returns its own registration disposer');
   const registrationsBeforeUnload = slots.calls.slice();
   slots.dispose();
   for (const entry of entries) assert.equal(entry.disposed, true, `unload releases the ${entry.name} contribution`);
@@ -1188,17 +1215,18 @@ test('unloading after registration releases the settings page and all three chat
   assert.equal(slots.calls.filter(entry => entry.disposed !== true).length, 0, 'later work cannot resurrect an unloaded contribution');
 });
 
-test('unloading immediately after synchronous apply releases all four contributions and prevents later registrations', async () => {
+test('unloading immediately after synchronous apply releases all five contributions and prevents later registrations', async () => {
   const { slots } = await boot({ state: snapshot(), history: { runs: [] } }, { disposeAfterApply: true });
   const entries = [
     contribution(slots, 'settings.section', 'preset-dispatch'),
     contribution(slots, 'tool.call.toolview', 'preset_dispatch'),
     contribution(slots, 'conversation.input.left', 'preset-dispatch-child'),
+    contribution(slots, 'conversation.input.dock', 'preset-dispatch-child'),
     contribution(slots, 'conversation.session.header.actions', 'preset-dispatch-child'),
   ];
-  assert.equal(slots.calls.length, 4, 'no registration may land after immediate unload');
+  assert.equal(slots.calls.length, 5, 'no registration may land after immediate unload');
   for (const entry of entries) assert.equal(entry.disposed, true, `the ${entry.name} contribution stays released after immediate unload`);
-  assert.equal(slots.calls.filter(entry => entry.disposed !== true).length, 0, 'all four synchronous contributions must be released after immediate unload');
+  assert.equal(slots.calls.filter(entry => entry.disposed !== true).length, 0, 'all five synchronous contributions must be released after immediate unload');
   const registrationsAfterUnload = slots.calls.slice();
   await settle();
   assert.deepEqual(slots.calls, registrationsAfterUnload, 'later work must not add any registration, even if immediately disposed');
@@ -1270,7 +1298,7 @@ test('V02 a running card learns its frozen name and version from the record, fal
   assert.doesNotMatch(texts(tree).join('|'), /后来重命名|版本 5/, 'later SSE metadata cannot rewrite the dispatch snapshot');
 });
 
-test('the child badge appears only for this plugin\'s own child and states what was actually observed', async () => {
+test('the child badge labels the preset and reports actual values without promoting a plan', async () => {
   const { emu, slots, events } = await boot({ state: snapshot(), history: { runs: [] } });
   const Badge = contribution(slots, 'conversation.input.left', 'preset-dispatch-child').component;
   const childRoute = { origin: 'subagent', agentPreset: 'researcher', agentSessionId: CHILD_SESSION, parentSession: PARENT_SESSION };
@@ -1282,14 +1310,14 @@ test('the child badge appears only for this plugin\'s own child and states what 
   assert.equal(otherPlugin, null, 'a subagent from another channel must not be claimed by this badge');
   assert.equal(events.streams.length, 0, 'no stream may be opened for a session this plugin does not own');
 
-  // A pending frame is not a record either: nothing may be shown for it.
+  // A pending frame is not an observed request: identify the child, but do not guess a model.
   const badgeProps = { sessionId: CHILD_SESSION, useProjection: () => childRoute };
   let pendingTree = await renderWith(Badge, emu, badgeProps);
-  assert.equal(events.streams.length, 1, 'the plugin\'s own child must be followed');
+  assert.equal(events.streams.length, 1, 'the child must be followed');
   assert.equal(streamParams(events.current).get('childSessionId'), CHILD_SESSION);
   events.current.emitPending();
   pendingTree = await renderWith(Badge, emu, badgeProps);
-  assert.equal(texts(pendingTree).join('|'), '', 'a run with nothing recorded yet must render as nothing, not as a guess');
+  assert.match(texts(pendingTree).join('|'), /Agent 预设：researcher.*模型：未核实.*思考强度：未核实/, 'no recorded request can be misrepresented as the actual model');
 
   // A real frame must show the observed request and label an unverified one honestly.
   events.current.emitSnapshot(visibilityFrame({ observed: null, verified: false, observedEffortSource: 'unknown', verification: '计划配置，尚未观察到实际请求' }));
@@ -1361,4 +1389,42 @@ test('the badge never invents a thinking level the provider did not disclose', a
   tree = await renderWith(Badge, emu, props);
   const detail = texts(tree).join('|');
   assert.match(detail, /模型默认（具体值未披露）|未知/, 'an undisclosed default must be stated as undisclosed');
+});
+
+test('native subagents show their own observed route without a plugin dispatch record', async () => {
+  const { emu, slots, events } = await boot({ state: snapshot(), history: { runs: [] } });
+  const Badge = contribution(slots, 'conversation.input.left', 'preset-dispatch-child').component;
+  const props = { sessionId: 'native-child', useProjection: () => ({
+    origin: 'subagent', agentPreset: 'reviewer', parentSession: PARENT_SESSION,
+    observed: { provider: 'codex-chatgpt', model: 'gpt-6-sol', reasoningEffort: 'high' }, verified: true,
+  }) };
+  let tree = await renderWith(Badge, emu, props);
+  const text = texts(tree).join('|');
+  assert.match(text, /Agent 预设：reviewer/);
+  assert.match(text, /模型：codex-chatgpt \/ gpt-6-sol/);
+  assert.match(text, /思考强度：high/);
+  assert.equal(events.streams.length, 1);
+  events.current.emitPending();
+  tree = await renderWith(Badge, emu, props);
+  assert.match(texts(tree).join('|'), /gpt-6-sol.*high/, 'a missing plugin record must not hide the child-owned request');
+});
+
+test('one-shot read-only sessions contribute a bottom badge outside the composer', async () => {
+  const { emu, slots } = await boot({ state: snapshot(), history: { runs: [] } });
+  const Dock = contribution(slots, 'conversation.input.dock', 'preset-dispatch-child').component;
+  const props = { sessionId: 'native-one-shot', session: { subagent: { address: { mode: 'one-shot', parentSessionId: PARENT_SESSION } } },
+    useProjection: () => ({ origin: 'subagent', agentPreset: 'reviewer', parentSession: PARENT_SESSION,
+      observed: { provider: 'codex-chatgpt', model: 'gpt-6-sol', reasoningEffort: 'xhigh' } }) };
+  let tree = await renderWith(Dock, emu, props);
+  assert.match(texts(tree).join('|'), /Agent 预设：reviewer.*模型：codex-chatgpt \/ gpt-6-sol.*思考强度：xhigh/);
+  assert.equal(await renderWith(Dock, emu, { ...props, session: { subagent: { address: { mode: 'continuable' } } } }), null,
+    'continuable children already have the regular input.left badge; never duplicate it in the dock');
+});
+
+test('a subagent lacking a route projection never invents model or effort', async () => {
+  const { emu, slots } = await boot({ state: snapshot(), history: { runs: [] } });
+  const Dock = contribution(slots, 'conversation.input.dock', 'preset-dispatch-child').component;
+  const props = { sessionId: 'early-child', session: { subagent: { address: { mode: 'one-shot' } } }, useProjection: () => null };
+  const tree = await renderWith(Dock, emu, props);
+  assert.match(texts(tree).join('|'), /Agent 预设：未知.*模型：未核实.*思考强度：未核实/);
 });

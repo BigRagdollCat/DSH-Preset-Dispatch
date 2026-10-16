@@ -89,6 +89,7 @@
 
 - `preset_list`：默认返回**精简目录**（可派遣预设、共享模型池与档位、派遣规则、`catalogId` 与目录标记、`omittedPresets`）；`diagnostic: true` 返回完整诊断（`hostPool`、`unauthorizedModels`、不可派遣预设、目录失败）。`catalogId` 只用于关联记录，不是授权票据。
 - `preset_dispatch`：按预设创建子代理；省略模型使用预设默认，无默认才继承父模型；显式 provider/model 必须成对；支持 `reasoning_effort`、`run_in_background`、可选 `catalogId`。
+- 轻量选模：常驻提示仅提醒分级；`preset_list` 按需返回低/中/高规则与能力、授权、成本证据边界。可选 `selection: { difficulty, reason }` 记录主代理自报分级和 1–160 字符的简短理由，不参与授权、不自动改变模型或重试。详见 [轻量选模说明](<docs/11-lightweight-model-selection.md>)。
 - 前台返回结果、routing、`runId`、`presetVersion`、`observationState`；后台返回 jobId 且明确 `childStarted:false`，用 `job_output`/`job_kill` 管理。
 - 权限边界：叶子禁止再派遣；深度取双方较严上限；审批固定 never；不继承一次性授权；拒绝替换安全服务；创建前后各复核一次授权。
 
@@ -96,7 +97,7 @@
 
 - 主对话专用卡片（注册在官方 `tool.call.toolview` 的 `preset_dispatch` 键上）：准备中/已派遣/结果三阶段，含错误披露与结果展开。
 - 区分**计划配置**与**实际请求**：实际值只来自子会话已提交的 `request/header`；未观测到标「计划配置，尚未观察到实际请求」，恢复的旧记录标「历史配置，未核实实际请求」，不推断提供方默认强度。
-- 子会话只读徽标（输入区左下角与会话头部各一处）：短格式「名称 · 模型 · 强度」，展开显示计划/实际、预设快照、子会话编号与确认状态。
+- 子会话配置徽标：可继续对话的子代理位于输入区左下角；一次性只读子会话新增独立的输入区上方底部条，头部仍保留入口。摘要明确显示「Agent 预设 · 模型 · 思考强度」；展开可看计划/实际、预设快照与子会话编号。即使不是本插件派遣，只要是子会话也可读取其自身已提交请求的投影；无实际请求则标「未核实」，不把预设默认值冒充调用值。
 - 卡片提供「进入子会话」与「在侧边栏打开」（官方 `uiWorkspace.openSession` / `sidebarRight.openResource`）；编号未确认或服务不可用时不显示入口。
 - 运行信封写入 `tool/result.meta`：`marker`、`formatVersion`、`runId`、`childSessionId`、`parentSessionId`、`callId`、`catalogId`、`observationState`、`observedRouting`、`status`。
 - 只读可见性接口 `GET /api/preset-dispatch/visibility`（SSE）：要求已认证操作者，父子与调用编号精确绑定，载荷只含元数据；结束、失配、断开、卸载都会释放。
@@ -110,7 +111,8 @@
 
 - 「调用记录」弹窗：按预设/状态筛选与分页，可刷新；内存保留最近 50 条。
 - 持久化存储域 `preset_dispatch_history` v1（`layout:'per-record'`，坏记录 `backup-and-skip`）；新增字段全部可选，旧记录仍可读；存储不可用时退回内存并上报原因。
-- 只保存元数据：角色、提供方、模型、强度、时间、状态、策略快照、子会话与调用关联、计划与实际配置；**不保存任务内容、回答或推理**。
+- 保存元数据：角色、提供方、模型、强度、时间、状态、策略快照、调用关联、计划与实际配置，以及可选 `selection` 分级/短理由和 `tokenUsage`。不主动复制任务、回答或推理；短理由属于会落盘的自由文本，调用者不得填写秘密、任务原文或推理过程。
+- 用量仅汇总子会话自己已提交回复的计数，重复事件去重；缺失字段保留未知，失败尝试未计量时标部分统计，不推算费用，也不含主代理调度开销。历史与卡片展开详情可查看；completed 不是质量验收通过。
 - 重启后仍为 `running` 的记录标记为 `interrupted`。
 
 ### 8. 界面与工程约束
@@ -122,7 +124,7 @@
 
 ## 验证状态
 
-当前候选的 **354 项自动测试**为 351 通过、3 跳过：这 3 项需要解析 Harness 宿主包，桌面应用把宿主包放进 `app.asar` 时普通 Node 进程取不到，夹具会打印它尝试过的候选根。四项门禁（语法与冻结表、全量测试、真实打包、存储契约）退出码均为 0，证据见 [验证记录](<docs/10-context-and-dispatch-verification.md>)。**尚未验证**：真实界面的浅深色、窄屏与一次性只读预览逐项验收；真实 Flash/Codex 的查询→派遣→后续请求与缓存/费用对比。因此查询压缩保持默认关闭，本文不宣称已节省 Token 或费用。
+当前候选的 **376 项自动测试**为 373 通过、3 跳过：这 3 项需要解析 Harness 宿主包，桌面应用把宿主包放进 `app.asar` 时普通 Node 进程取不到，夹具会打印它尝试过的候选根。语法与冻结表、全量测试、真实打包可独立执行；存储契约检查在缺少宿主包时报告 **SKIPPED**，不计为通过。历史验证证据见 [验证记录](<docs/10-context-and-dispatch-verification.md>)。**尚未验证**：重启后新选模参数与用量在真实模型任务中的表现及总成本对照；上次改动在真实桌面端的左下角位置与原生子代理会话表现，以及浅深色、窄屏；真实 Flash/Codex 的查询→派遣→后续请求与缓存/费用对比。因此查询压缩保持默认关闭，本文不宣称已节省 Token 或费用。
 
 **生效方式**：Host 侧改动需要**重启 DSH 进程**才生效；只刷新浏览器不会加载新的 Host 模块（界面半边随页面刷新更新）。
 
@@ -239,7 +241,7 @@ node scripts/storage-contract-check.mjs # 用真实包验证存储域声明与 s
 node scripts/live-probe.mjs             # 运行实例是否已加载本版本代码
 ```
 
-四道门禁都**验证过失败路径**（移除必需文件或删除冻结表行会返回非零），不是"永远通过"的检查。当前候选：**354 项测试（351 通过 / 3 跳过），四项门禁退出码均为 0**；跳过的是需要 Harness 宿主包的真实 Session 测试，环境不可解析时跳过并打印原因。
+门禁有明确失败路径（移除必需文件或删除冻结表行会返回非零）。当前候选：**376 项测试（373 通过 / 3 跳过）**；跳过的是需要 Harness 宿主包的真实 Session 测试。存储契约门禁在宿主包不可解析时也会报告 **SKIPPED**，不能视作完成验证。
 
 维护说明与冻结哈希表见 [MAINTENANCE.md](MAINTENANCE.md)；需求、设计、升级与回退、验收证据见 [`docs/`](docs/)。
 
@@ -257,8 +259,8 @@ node scripts/live-probe.mjs             # 运行实例是否已加载本版本�
 
 - **设置页**：`Agent 管理`（客户端由本插件的 `client.js` 提供）
 - **工具**：`preset_list`（默认精简目录，`diagnostic: true` 返回全量诊断）与 `preset_dispatch`（按预设派遣，支持显式提供方/模型/强度、后台运行、可选 `catalogId`）
-- **客户端插槽**：`tool.call.toolview` 的 `preset_dispatch`（派遣卡片）、`conversation.input.left` 与 `conversation.session.header.actions` 的 `preset-dispatch-child`（子会话只读徽标）
+- **客户端插槽**：`tool.call.toolview` 的 `preset_dispatch`（派遣卡片）；`conversation.input.left`、`conversation.input.dock` 与 `conversation.session.header.actions` 的 `preset-dispatch-child`（子会话配置徽标；底部 dock 仅用于一次性只读子会话）
 - **HTTP 路由**：`/api/preset-dispatch/*`（`state`、`catalog/refresh`、`operation`、`agent-save`、`presets`、`history`、`history/query`、`visibility`），仅接受已认证操作者请求
 - **存储域**：`preset_dispatch_history` v1（`layout:'per-record'`，坏记录 `backup-and-skip`）
 - **Host 入口**：稳定入口 `entry.js`；预设行由本插件自己的 `role-managed.js` 承载
-- **新增模块**：`dispatch-observation.js`（计划/实际观测与会话投影）、`visibility-api.js`（可见性 SSE）、`query-compaction.js` 与 `query-compaction-host.js`（查询压缩，默认关闭）
+- **新增模块**：`dispatch-reporting.js`（有界选模记录与已报告 Token 汇总）、`dispatch-observation.js`（计划/实际观测与会话投影）、`visibility-api.js`（可见性 SSE）、`query-compaction.js` 与 `query-compaction-host.js`（查询压缩，默认关闭）

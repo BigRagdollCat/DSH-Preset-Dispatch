@@ -1,4 +1,5 @@
-const fields = ['id', 'preset', 'role', 'provider', 'model', 'depth', 'parentSession', 'reasoningEffort', 'modelSource', 'effortSource', 'presetVersion', 'policySnapshot'];
+import { validSelection, validTokenUsage } from './dispatch-reporting.js?stable';
+const fields = ['id', 'preset', 'role', 'provider', 'model', 'depth', 'parentSession', 'reasoningEffort', 'modelSource', 'effortSource', 'presetVersion', 'policySnapshot', 'selection'];
 
 /**
  * Fields a dispatch lifecycle may ADD or CORRECT after `begin`, together with the
@@ -27,6 +28,7 @@ export const UPDATABLE_FIELDS = {
   plannedRouting: value => typeof value === 'object' && value !== null && !Array.isArray(value),
   observedRouting: value => value === null || (typeof value === 'object' && !Array.isArray(value)),
   observationState: value => typeof value === 'string' && value !== '',
+  tokenUsage: validTokenUsage,
   // `status` is deliberately NOT updatable. It is written once by `begin` as `running` and can
   // only be settled by `finish`, which also records `finishedAt`; an update patch that could
   // set it would let a caller mark a run completed without an outcome.
@@ -66,7 +68,7 @@ export function createHistory(limit = 50, store = null) {
 
   return {
     begin(data) {
-      const metadata = Object.fromEntries(fields.filter(key => data[key] !== undefined).map(key => [key, structuredClone(data[key])]));
+      const metadata = Object.fromEntries(fields.filter(key => data[key] !== undefined && (key !== 'selection' || validSelection(data[key]))).map(key => [key, structuredClone(data[key])]));
       // Fields that only a later stage can know are accepted at begin too, so a
       // caller that already holds them does not need a second write.
       const extra = Object.fromEntries(Object.keys(UPDATABLE_FIELDS)

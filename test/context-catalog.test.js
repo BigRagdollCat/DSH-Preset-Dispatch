@@ -31,6 +31,9 @@ test('C01 resident routing text is a short entry point that still advertises bot
   const text = routingText({ enabled: true });
   assert.match(text, /preset_list/, 'the query entry point must stay discoverable');
   assert.match(text, /preset_dispatch/, 'the dispatch entry point must stay discoverable');
+  assert.match(text, /复杂度.*错误代价.*所需能力.*分级/);
+  assert.match(text, /简单任务不强行派遣/);
+  assert.ok([...text].length <= 180, 'resident reminder stays short; rubric belongs in preset_list');
   assert.ok(text.length <= 400, `resident text must be a short entry point, got ${text.length} characters`);
   // The long handoff and per-role detail moved into the query result; carrying role names or
   // role permissions in every turn is exactly what C01 removes.
@@ -153,6 +156,15 @@ test('C02 compact list states the dispatch rules that left the resident prompt',
   assert.match(text, /单写者/, 'the single-writer rule must be queryable');
   assert.match(text, /RED|回归|门禁/, 'the verification stages must be queryable');
   assert.match(text, /不绕过|不得绕过|禁止/, 'the no-bypass rule must be queryable');
+  assert.match(value.rules.taskAssessment, /低\/中\/高/);
+  assert.match(value.rules.taskAssessment, /不另派代理打分/);
+  assert.match(value.rules.modelChoice, /不证明价格.*视觉链路/);
+  assert.match(value.rules.modelChoice, /一张.*验证.*失败不批量派遣/);
+  assert.match(value.rules.modelChoice, /预设默认/);
+  assert.match(value.rules.modelChoice, /显式传 provider\/model\/reasoning_effort/);
+  assert.match(value.rules.modelChoice, /拒绝后不得自动换模型重试/);
+  assert.match(value.rules.modelChoice, /selection/);
+  assert.ok([...value.rules.taskAssessment + value.rules.modelChoice].length < 800, 'do not grow the on-demand rubric into a routing manual');
 });
 
 // ---------------------------------------------------------------------------------------
